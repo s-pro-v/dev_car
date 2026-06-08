@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="pl" class="dark-theme">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="DriveCare — ewidencja serwisowa pojazdu, przypomnienia SKP/OC, planowanie wymian i pulpit stanu technicznego.">
+    <meta name="theme-color" content="#1c1c1c">
+    <title>DriveCare — Ewidencja pojazdów</title>
+    <link rel="stylesheet" href="./style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+    <div id="app-root" class="app-root">
+
+        <header class="site-header" aria-label="Nagłówek aplikacji">
+            <div class="status-bar">
+                <div class="status-bar__left">
+                    <div class="status-indicator">
+                        <span class="status-dot" aria-hidden="true"></span>
+                        <span class="status-title">DriveCare</span>
+                    </div>
+                    <span class="status-separator" aria-hidden="true">|</span>
+                    <span class="status-branding">Ewidencja pojazdów</span>
+                </div>
+                <div class="status-bar__right">
+                    <span class="status-time">Czas: <span id="system-time-display"
+                            class="status-time-val">—</span></span>
+                    <span class="status-badge">Online</span>
+                </div>
+            </div>
+
+            <div class="main-header">
+                <div class="header-inner">
+                    <div class="logo">
+                        <div class="logo-icon-wrapper">
+                            <i data-lucide="wrench"></i>
+                        </div>
+                        <div>
+                            <span class="logo-text-primary">DRIVE CARE</span>
+                            <span class="logo-text-secondary">Ewidencja pojazdów</span>
+                        </div>
+                    </div>
+
+                    <nav class="nav-desktop" data-tutorial="main-nav" aria-label="Główne menu">
+                        <button class="nav-tab-btn active" data-tab="logs" type="button">
+                            <i data-lucide="wrench"></i>
+                            <span>Ewidencja Serwisowa</span>
+                        </button>
+                        <button class="nav-tab-btn" data-tab="wymiany" type="button">
+                            <i data-lucide="layers"></i>
+                            <span>Co do wymiany</span>
+                            <span id="pending-replacements-badge" class="badge-count badge-count--hidden">0</span>
+                        </button>
+                        <button class="nav-tab-btn" data-tab="koszty" type="button">
+                            <i data-lucide="coins"></i>
+                            <span>Analiza / Koszty</span>
+                        </button>
+                        <button class="nav-tab-btn" data-tab="pulpit" type="button">
+                            <i data-lucide="layout-dashboard"></i>
+                            <span>Pulpit Pojazdu</span>
+                        </button>
+                    </nav>
+
+                    <div class="header-actions-desktop">
+                        <button id="theme-toggle" class="btn-theme-toggle" data-tutorial="theme-toggle" type="button"
+                            title="Zmień motyw" aria-label="Zmień motyw">
+                            <i data-lucide="sun"></i>
+                        </button>
+                        <div class="fleet-badge">
+                            <span class="fleet-badge__dot" aria-hidden="true"></span>
+                            <span id="fleet-count-display">Baza pojazdów</span>
+                        </div>
+                    </div>
+
+                    <div class="mobile-menu-actions">
+                        <button id="mobile-theme-toggle" class="btn-theme-toggle" type="button"
+                            aria-label="Zmień motyw">
+                            <i data-lucide="sun"></i>
+                        </button>
+                        <button id="mobile-menu-btn" class="btn-icon" type="button" aria-label="Menu">
+                            <i data-lucide="menu"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="mobile-menu-drawer" class="mobile-menu-drawer" aria-label="Menu mobilne">
+                <button class="mobile-nav-tab-btn active" data-tab="logs" type="button">
+                    <i data-lucide="wrench"></i>
+                    <span>Ewidencja Serwisowa</span>
+                </button>
+                <button class="mobile-nav-tab-btn" data-tab="wymiany" type="button">
+                    <i data-lucide="layers"></i>
+                    <span>Co do wymiany</span>
+                    <span id="mobile-pending-replacements-badge" class="badge-count badge-count--hidden">0</span>
+                </button>
+                <button class="mobile-nav-tab-btn" data-tab="koszty" type="button">
+                    <i data-lucide="coins"></i>
+                    <span>Analiza / Koszty</span>
+                </button>
+                <button class="mobile-nav-tab-btn" data-tab="pulpit" type="button">
+                    <i data-lucide="layout-dashboard"></i>
+                    <span>Pulpit Pojazdu</span>
+                </button>
+            </div>
+        </header>
+
+    </div>
+
+    <main class="main-content">
+        <div class="grid-main-columns">
+            <vehicle-selector></vehicle-selector>
+
+            <div class="guide-card" data-tutorial="guide-card">
+                <div>
+                    <span class="guide-badge">Samouczek DriveCare</span>
+                    <h4 class="guide-title">Pierwsze kroki w aplikacji</h4>
+                    <p class="guide-desc">
+                        Przejdź interaktywny przewodnik po wszystkich modułach: pojazd, ewidencja, wymiany,
+                        koszty, pulpit i przypomnienia.
+                    </p>
+                </div>
+                <div>
+                    <button id="open-help-btn" class="btn-secondary" type="button">
+                        <i data-lucide="graduation-cap"></i>
+                        <span>Uruchom samouczek</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <reminder-system></reminder-system>
+
+        <div class="tabs-viewport">
+            <div id="logs-tab" class="tab-panel active">
+                <service-logbook></service-logbook>
+            </div>
+            <div id="wymiany-tab" class="tab-panel">
+                <parts-board></parts-board>
+            </div>
+            <div id="koszty-tab" class="tab-panel">
+                <project-estimator></project-estimator>
+            </div>
+            <div id="pulpit-tab" class="tab-panel">
+                <vehicle-dashboard></vehicle-dashboard>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="footer-inner">
+            <div>
+                <span class="footer-brand">DriveCare</span>
+                <span>&copy; 2026 Ewidencja pojazdów. Wszystkie prawa zastrzeżone.</span>
+            </div>
+            <div class="footer-links">
+                <span>Web Components &amp; ESM</span>
+                <span aria-hidden="true">|</span>
+                <div class="footer-love">
+                    <i data-lucide="heart"></i>
+                    <span>Dla kierowców</span>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <nav class="mobile-dock" data-tutorial="mobile-nav" aria-label="Nawigacja mobilna">
+        <button class="dock-btn active" data-tab="logs" type="button">
+            <i data-lucide="wrench"></i>
+            <span>Ewidencja</span>
+        </button>
+        <button class="dock-btn" data-tab="wymiany" type="button">
+            <i data-lucide="layers"></i>
+            <span>Do wymiany</span>
+            <span id="dock-pending-replacements-badge" class="badge-count badge-count--hidden">0</span>
+        </button>
+        <button class="dock-btn" data-tab="koszty" type="button">
+            <i data-lucide="coins"></i>
+            <span>Koszty</span>
+        </button>
+        <button class="dock-btn" data-tab="pulpit" type="button">
+            <i data-lucide="layout-dashboard"></i>
+            <span>Pulpit</span>
+        </button>
+    </nav>
+
+    <div id="tutorial-root" class="tutorial-root" hidden>
+        <div class="tutorial-overlay" hidden aria-hidden="true"></div>
+        <div class="tutorial-spotlight" hidden aria-hidden="true"></div>
+        <div id="tutorial-popover" class="tutorial-popover tutorial-popover--dock" role="dialog" aria-modal="true"
+            aria-labelledby="tutorial-title">
+            <div class="tutorial-popover__header">
+                <div class="tutorial-modal__head">
+                    <span class="tutorial-step-index">Krok 1 z 9</span>
+                    <h3 id="tutorial-title" class="modal-title">Samouczek DriveCare</h3>
+                </div>
+                <button id="tutorial-close" class="btn-icon" type="button" title="Zamknij"
+                    aria-label="Zamknij samouczek">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="tutorial-progress" aria-hidden="true">
+                <div class="tutorial-progress__fill"></div>
+            </div>
+            <div class="tutorial-step">
+                <div class="tutorial-step__icon">
+                    <i data-lucide="sparkles"></i>
+                </div>
+                <h4 class="tutorial-step__title"></h4>
+                <p class="tutorial-step__lead"></p>
+                <div class="tutorial-step__body"></div>
+            </div>
+            <div class="tutorial-actions">
+                <button id="tutorial-skip" class="btn-secondary tutorial-actions__skip" type="button">Pomiń
+                    samouczek</button>
+                <div class="tutorial-actions__nav">
+                    <button id="tutorial-prev" class="btn-secondary" type="button">Wstecz</button>
+                    <button id="tutorial-next" class="btn-primary" type="button">Dalej</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./js/app.js"></script>
+</body>
+
+</html>
