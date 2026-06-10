@@ -6,6 +6,7 @@ import './components/ProjectEstimator.js';
 import './components/VehicleDashboard.js';
 
 import { store } from './lib/store.js';
+import { analyzePlannedReplacements } from './lib/maintenanceUtils.js';
 import { initTutorial } from './lib/tutorial.js';
 import { initNavigation, getActiveTabId, navigateToTab } from './lib/navigation.js';
 import { initTheme } from './lib/theme.js';
@@ -29,9 +30,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function updateAppStats(state) {
     const activeCar = state.vehicles.find(v => v.id === state.selectedVehicleId);
-    const pendingCount = activeCar
-        ? state.replacementItems.filter(item => item.vehicleId === activeCar.id && item.status === 'planned').length
-        : 0;
+    const replacementAnalysis = activeCar
+        ? analyzePlannedReplacements(activeCar, state.replacementItems)
+        : null;
+    const pendingCount = replacementAnalysis ? replacementAnalysis.plannedCount : 0;
+    const urgentCount = replacementAnalysis ? replacementAnalysis.urgentCount : 0;
+    const badgeCount = urgentCount > 0 ? urgentCount : pendingCount;
 
     const fleetDisplay = document.getElementById('fleet-count-display');
     if (fleetDisplay) {
@@ -45,8 +49,8 @@ function updateAppStats(state) {
 
     [desktopBadge, drawerBadge, dockBadge].forEach(badge => {
         if (!badge) return;
-        if (pendingCount > 0) {
-            badge.textContent = pendingCount;
+        if (badgeCount > 0) {
+            badge.textContent = badgeCount;
             badge.classList.remove('badge-count--hidden');
         } else {
             badge.classList.add('badge-count--hidden');

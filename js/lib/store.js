@@ -1,4 +1,6 @@
 import { STORAGE_KEYS } from './constants.js';
+import { generateMaintenanceItems, createNextMaintenanceItem } from './generateMaintenanceSchedule.js';
+import { computeItemPriority, getServiceCategoryForTemplate, computeNextInspectionDate } from './maintenanceUtils.js';
 
 class DriveCareStore {
     constructor() {
@@ -162,21 +164,67 @@ class DriveCareStore {
         }
     }
 
+    recomputeVehicleFromLogs(vehicleId) {
+        const vehicle = this.vehicles.find(v => v.id === vehicleId);
+        if (!vehicle) return;
+
+        const logs = this.serviceLogs.filter(l => l.vehicleId === vehicleId);
+        let changed = false;
+
+        if (logs.length > 0) {
+            const highestMileage = Math.max(...logs.map(l => l.mileage || 0));
+            if (vehicle.mileage !== highestMileage) {
+                vehicle.mileage = highestMileage;
+                changed = true;
+            }
+        }
+
+        const inspectionLogs = logs
+            .filter(l => l.category === 'inspection')
+            .sort((a, b) => {
+                const dateDiff = new Date(b.date) - new Date(a.date);
+                if (dateDiff !== 0) return dateDiff;
+                return (b.mileage || 0) - (a.mileage || 0);
+            });
+
+        if (inspectionLogs.length > 0) {
+            const latestInspection = inspectionLogs[0];
+            const latestNext = latestInspection.nextInspectionDate
+                || computeNextInspectionDate(latestInspection.date);
+            if (latestNext && vehicle.nextInspectionDate !== latestNext) {
+                vehicle.nextInspectionDate = latestNext;
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            localStorage.setItem(STORAGE_KEYS.vehicles, JSON.stringify(this.vehicles));
+            this.refreshMaintenancePriorities(vehicleId);
+        }
+    }
+
     syncVehicleFromLog(log) {
-        const vehicle = this.vehicles.find(v => v.id === log.vehicleId);
+        this.recomputeVehicleFromLogs(log.vehicleId);
+    }
+
+    refreshMaintenancePriorities(vehicleId) {
+        const vehicle = this.vehicles.find(v => v.id === vehicleId);
         if (!vehicle) return;
 
         let changed = false;
-        if (log.mileage > vehicle.mileage) {
-            vehicle.mileage = log.mileage;
-            changed = true;
-        }
-        if (log.category === 'inspection' && log.nextInspectionDate) {
-            vehicle.nextInspectionDate = log.nextInspectionDate;
-            changed = true;
-        }
+        this.replacementItems.forEach(item => {
+            if (item.vehicleId !== vehicleId || item.status !== 'planned') return;
+
+            const basePriority = item.basePriority || item.priority;
+            const nextPriority = computeItemPriority(item, vehicle, basePriority);
+            if (nextPriority !== item.priority) {
+                item.priority = nextPriority;
+                changed = true;
+            }
+        });
+
         if (changed) {
-            localStorage.setItem(STORAGE_KEYS.vehicles, JSON.stringify(this.vehicles));
+            localStorage.setItem(STORAGE_KEYS.replacementItems, JSON.stringify(this.replacementItems));
         }
     }
 
@@ -199,17 +247,66 @@ class DriveCareStore {
         this.notify();
     }
 
-    addVehicle(vehicle) {
+    addVehicle(vehicle, options = {}) {
+        const generateSchedule = options.generateSchedule !== false;
+        let generatedCount = 0;
+
+        if (generateSchedule) {
+            const { profile, items } = generateMaintenanceItems(vehicle);
+            vehicle.maintenanceProfile = profile.id;
+            vehicle.maintenanceProfileLabel = profile.label;
+            const existingKeys = new Set(
+                this.replacementItems
+                    .filter(r => r.vehicleId === vehicle.id && r.source === 'auto' && r.templateKey)
+                    .map(r => r.templateKey)
+            );
+            items.forEach(item => {
+                if (item.templateKey && existingKeys.has(item.templateKey)) return;
+                this.replacementItems.push(item);
+                if (item.templateKey) existingKeys.add(item.templateKey);
+                generatedCount += 1;
+            });
+            localStorage.setItem(STORAGE_KEYS.replacementItems, JSON.stringify(this.replacementItems));
+        }
+
         this.vehicles.push(vehicle);
         localStorage.setItem(STORAGE_KEYS.vehicles, JSON.stringify(this.vehicles));
         this.selectedVehicleId = vehicle.id;
         localStorage.setItem(STORAGE_KEYS.selectedVehicle, vehicle.id);
         this.notify();
+        return {
+            generatedCount,
+            profileLabel: vehicle.maintenanceProfileLabel || null
+        };
     }
 
-    updateVehicle(vehicle) {
+    updateVehicle(vehicle, options = {}) {
+        const previous = this.vehicles.find(v => v.id === vehicle.id);
         this.vehicles = this.vehicles.map(v => v.id === vehicle.id ? vehicle : v);
         localStorage.setItem(STORAGE_KEYS.vehicles, JSON.stringify(this.vehicles));
+
+        if (options.regenerateSchedule && previous) {
+            this.replacementItems = this.replacementItems.filter(
+                item => !(item.vehicleId === vehicle.id && item.source === 'auto' && item.status === 'planned')
+            );
+            const { profile, items } = generateMaintenanceItems(vehicle);
+            vehicle.maintenanceProfile = profile.id;
+            vehicle.maintenanceProfileLabel = profile.label;
+            const existingKeys = new Set(
+                this.replacementItems
+                    .filter(r => r.vehicleId === vehicle.id && r.source === 'auto' && r.templateKey)
+                    .map(r => r.templateKey)
+            );
+            items.forEach(item => {
+                if (item.templateKey && existingKeys.has(item.templateKey)) return;
+                this.replacementItems.push(item);
+                if (item.templateKey) existingKeys.add(item.templateKey);
+            });
+            localStorage.setItem(STORAGE_KEYS.replacementItems, JSON.stringify(this.replacementItems));
+            localStorage.setItem(STORAGE_KEYS.vehicles, JSON.stringify(this.vehicles));
+        }
+
+        this.refreshMaintenancePriorities(vehicle.id);
         this.notify();
     }
 
@@ -241,8 +338,12 @@ class DriveCareStore {
     }
 
     deleteServiceLog(id) {
+        const log = this.serviceLogs.find(l => l.id === id);
         this.serviceLogs = this.serviceLogs.filter(l => l.id !== id);
         localStorage.setItem(STORAGE_KEYS.serviceLogs, JSON.stringify(this.serviceLogs));
+        if (log) {
+            this.recomputeVehicleFromLogs(log.vehicleId);
+        }
         this.notify();
     }
 
@@ -277,7 +378,21 @@ class DriveCareStore {
         if (!item) return false;
 
         item.status = 'completed';
+        item.completedAt = new Date().toISOString();
+        item.completedDate = date;
+        item.completedMileage = mileage;
         localStorage.setItem(STORAGE_KEYS.replacementItems, JSON.stringify(this.replacementItems));
+
+        if (item.templateKey) {
+            this.replacementItems = this.replacementItems.filter(
+                r => !(
+                    r.vehicleId === item.vehicleId
+                    && r.templateKey === item.templateKey
+                    && r.status === 'planned'
+                )
+            );
+            localStorage.setItem(STORAGE_KEYS.replacementItems, JSON.stringify(this.replacementItems));
+        }
 
         this.addServiceLog({
             id: 'l-' + Date.now(),
@@ -285,10 +400,21 @@ class DriveCareStore {
             date,
             mileage,
             cost,
-            category: 'repair',
+            category: getServiceCategoryForTemplate(item.templateKey),
             workDone: 'Wymiana: ' + item.itemName,
             notes: 'Zadanie oznaczone jako wykonane z tablicy wymian.'
         });
+
+        const nextItem = createNextMaintenanceItem(item, mileage, date);
+        if (nextItem) {
+            item.nextTargetMileage = nextItem.targetMileage;
+            item.nextTargetDate = nextItem.targetDate;
+            item.nextReplacementId = nextItem.id;
+            this.replacementItems.push(nextItem);
+            localStorage.setItem(STORAGE_KEYS.replacementItems, JSON.stringify(this.replacementItems));
+        }
+
+        this.notify();
         return true;
     }
 }

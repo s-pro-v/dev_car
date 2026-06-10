@@ -35,10 +35,11 @@ const STEPS = [
     },
     {
         icon: 'bell-ring',
-        title: 'Krok 2 — Panel przypomnień',
-        lead: 'Tu zobaczysz alerty o terminach i zaległościach serwisowych.',
+        title: 'Krok 2 — Alerty boczne',
+        lead: 'Po prawej stronie masz wąskie kafelki alertów — SKP, OC, olej i wymiany.',
         body: `
-            <p>Kolor alertów: <strong>czerwony</strong> — pilne, <strong>pomarańczowy</strong> — zbliża się termin, <strong>zielony</strong> — OK.</p>
+            <p>Kliknij kafelek, aby rozwinąć panel ze statusem, wyjaśnieniem i sugerowanym krokiem.</p>
+            <p><strong>Czerwony</strong> — pilne, <strong>pomarańczowy</strong> — uwaga, <strong>zielony</strong> — OK.</p>
         `,
         tab: null,
         target: '[data-tutorial="reminders-panel"]'

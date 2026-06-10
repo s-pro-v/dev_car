@@ -2,6 +2,7 @@ import { store, escapeHTML } from '../lib/store.js';
 import { destroyDateInputs, enhanceDateInputs } from '../lib/datePicker.js';
 import { showConfirm } from '../lib/confirmDialog.js';
 import { daysUntil, getTodayISO } from '../lib/dateUtils.js';
+import { getReplacementDueStatus, getVisiblePlannedReplacements, getCompletedReplacementDetails } from '../lib/maintenanceUtils.js';
 import { refreshIcons } from '../lib/icons.js';
 
 class PartsReplacementBoard extends HTMLElement {
@@ -58,8 +59,10 @@ class PartsReplacementBoard extends HTMLElement {
         }
 
         const activeItems = store.replacementItems.filter(item => item.vehicleId === vehicle.id);
-        const plannedItems = activeItems.filter(item => item.status === 'planned');
-        const finishedItems = activeItems.filter(item => item.status === 'replaced' || item.status === 'completed');
+        const plannedItems = getVisiblePlannedReplacements(vehicle, store.replacementItems);
+        const finishedItems = activeItems
+            .filter(item => item.status === 'completed')
+            .sort((a, b) => (b.completedAt || b.id).localeCompare(a.completedAt || a.id));
 
         const totalForecastCost = plannedItems.reduce((sum, item) => sum + (item.estimatedCost || 0), 0);
 
@@ -74,7 +77,10 @@ class PartsReplacementBoard extends HTMLElement {
                         <span class="parts-intro__badge">Planowanie Serwisu</span>
                         <h2 class="parts-intro__title">Co do wymiany — ${escapeHTML(vehicle.brand)} ${escapeHTML(vehicle.model)}</h2>
                         <p class="parts-intro__desc">
-                            Śledź terminy SKP i OC, planuj wymiany części oraz przenoś wykonane zadania prosto do ewidencji serwisowej.
+                            Zalecenia producenta wg profilu serwisowego — po oznaczeniu „Wymienione” pozycja znika z listy do czasu kolejnego terminu.
+                            ${vehicle.maintenanceProfileLabel ? `
+                                <span class="parts-intro__profile">Harmonogram: ${escapeHTML(vehicle.maintenanceProfileLabel)}</span>
+                            ` : ''}
                         </p>
                     </div>
                     <i data-lucide="layers"></i>
@@ -154,6 +160,7 @@ class PartsReplacementBoard extends HTMLElement {
                         <div class="kanban-column__body">
                             ${plannedItems.length > 0 ? plannedItems.map(item => {
                     const daysLeft = this.getDaysRemainingStr(item.targetDate);
+                    const mileageLeft = getReplacementDueStatus(item, vehicle);
                     let prioBadge = '';
                     if (item.priority === 'high') {
                         prioBadge = `<span class="badge badge--critical">Krytyczny</span>`;
@@ -164,11 +171,12 @@ class PartsReplacementBoard extends HTMLElement {
                     }
 
                     return `
-                                    <div class="task-card">
+                                    <div class="task-card ${mileageLeft.isOverdue ? 'task-card--overdue' : mileageLeft.isSoon ? 'task-card--soon' : ''}">
                                         <div class="task-card__info">
                                             <div class="task-card__head">
                                                 <h4 class="task-title" title="${escapeHTML(item.itemName)}">${escapeHTML(item.itemName)}</h4>
                                                 <div class="task-card__badges">
+                                                    ${item.source === 'auto' ? `<span class="badge badge--auto">Producent</span>` : ''}
                                                     ${prioBadge}
                                                     ${item.estimatedCost ? `
                                                         <span class="badge badge--gray">
@@ -178,6 +186,15 @@ class PartsReplacementBoard extends HTMLElement {
                                                 </div>
                                             </div>
                                             ${item.notes ? `<p class="task-desc">${escapeHTML(item.notes)}</p>` : ''}
+                                            ${item.targetMileage ? `
+                                                <div class="task-meta">
+                                                    <i data-lucide="milestone"></i>
+                                                    <span>Cel: <span class="task-meta__date">${item.targetMileage.toLocaleString('pl-PL')} km</span></span>
+                                                    <span class="task-meta__days ${mileageLeft.isOverdue ? 'task-meta__days--overdue' : mileageLeft.isSoon ? 'task-meta__days--soon' : 'task-meta__days--standard'}">
+                                                        (${escapeHTML(mileageLeft.text)})
+                                                    </span>
+                                                </div>
+                                            ` : ''}
                                             ${item.targetDate ? `
                                                 <div class="task-meta">
                                                     <i data-lucide="calendar"></i>
@@ -232,10 +249,21 @@ class PartsReplacementBoard extends HTMLElement {
                         <div class="kanban-column__body">
                             ${finishedItems.length > 0 ? `
                                 <div class="completed-list">
-                                    ${finishedItems.map(item => `
+                                    ${finishedItems.map(item => {
+                    const history = getCompletedReplacementDetails(item, vehicle, store.replacementItems);
+                    return `
                                         <div class="completed-item">
                                             <div class="completed-item__body">
                                                 <span class="completed-item__title" title="${escapeHTML(item.itemName)}">${escapeHTML(item.itemName)}</span>
+                                                ${history.performedText ? `
+                                                    <p class="completed-item__meta">${escapeHTML(history.performedText)}</p>
+                                                ` : ''}
+                                                ${history.nextText ? `
+                                                    <p class="completed-item__next">
+                                                        <i data-lucide="calendar-clock"></i>
+                                                        <span>Kolejna wymiana: ${escapeHTML(history.nextText)}</span>
+                                                    </p>
+                                                ` : ''}
                                                 ${item.notes ? `<p class="task-desc task-desc--done">${escapeHTML(item.notes)}</p>` : ''}
                                             </div>
                                             <div class="completed-item__actions">
@@ -245,7 +273,8 @@ class PartsReplacementBoard extends HTMLElement {
                                                 </button>
                                             </div>
                                         </div>
-                                    `).join('')}
+                                    `;
+                }).join('')}
                                 </div>
                             ` : `
                                 <div class="empty-state empty-state--embedded-lg">
@@ -327,8 +356,15 @@ class PartsReplacementBoard extends HTMLElement {
                         </div>
                         <div class="modal-body">
                             <form id="complete-part-form" class="form-grid">
-                                <div class="badge badge--success badge--notice">
-                                    Super! Pozycję <strong>${escapeHTML(this.completingItem.itemName)}</strong> uważa się za obsłużoną. Poniższy formularz wyeksportuje ją automatycznie do <strong>Książki Serwisowej</strong> pojazdu, aby zachować ciągłość ewidencji i prawidłowych obliczeń budżetowych!
+                                <div class="form-notice form-notice--success" role="status">
+                                    <i data-lucide="book-check"></i>
+                                    <div class="form-notice__content">
+                                        <p class="form-notice__title">Zapis w ewidencji serwisowej</p>
+                                        <p class="form-notice__text">
+                                            Pozycja <strong>${escapeHTML(this.completingItem.itemName)}</strong> zostanie zapisana w historii napraw po zatwierdzeniu.
+                                            Uzupełnij datę, przebieg i koszt — wpis trafi też do analizy kosztów.
+                                        </p>
+                                    </div>
                                 </div>
 
                                 <div class="form-grid form-grid--2">
@@ -349,7 +385,7 @@ class PartsReplacementBoard extends HTMLElement {
 
                                 <div class="form-actions">
                                     <button type="button" class="close-complete-modal-btn btn-secondary">Anuluj</button>
-                                    <button type="submit" class="btn-primary btn-primary--success">Zatwierdź i Wyeksportuj</button>
+                                    <button type="submit" class="btn-primary btn-primary--success">Zatwierdź i zapisz w ewidencji</button>
                                 </div>
                             </form>
                         </div>

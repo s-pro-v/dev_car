@@ -2,6 +2,7 @@ import { store, escapeHTML } from '../lib/store.js';
 import { destroyDateInputs, enhanceDateInputs } from '../lib/datePicker.js';
 import { showConfirm } from '../lib/confirmDialog.js';
 import { getTodayISO } from '../lib/dateUtils.js';
+import { computeNextInspectionDate } from '../lib/maintenanceUtils.js';
 import { refreshIcons } from '../lib/icons.js';
 
 class ServiceLogBook extends HTMLElement {
@@ -66,6 +67,10 @@ class ServiceLogBook extends HTMLElement {
         const averageCost = activeLogs.length > 0 ? (totalCost / activeLogs.length) : 0;
 
         const editingLog = this.editingLogId ? activeLogs.find(l => l.id === this.editingLogId) : null;
+        const defaultLogDate = editingLog ? editingLog.date : getTodayISO();
+        const isInspectionForm = !editingLog || editingLog.category === 'inspection';
+        const defaultNextInspection = editingLog?.nextInspectionDate
+            || (isInspectionForm ? computeNextInspectionDate(defaultLogDate) : '');
 
         this.innerHTML = `
             <div class="stack">
@@ -248,9 +253,10 @@ class ServiceLogBook extends HTMLElement {
                                     </div>
                                 </div>
  
-                                <div class="form-group">
-                                    <label class="form-label">Data Kolejnego Przeglądu (Reminder)</label>
-                                    <input type="date" id="log-next-inspection" value="${editingLog && editingLog.nextInspectionDate ? escapeHTML(editingLog.nextInspectionDate) : ''}" class="form-input form-input--mono">
+                                <div class="form-group" id="log-next-inspection-group" ${isInspectionForm ? '' : 'hidden'}>
+                                    <label class="form-label">Data kolejnego przeglądu (SKP)</label>
+                                    <input type="date" id="log-next-inspection" value="${defaultNextInspection ? escapeHTML(defaultNextInspection) : ''}" class="form-input form-input--mono">
+                                    <p class="form-hint">Domyślnie 12 miesięcy od daty bieżącego przeglądu — zgodnie z rocznym terminem SKP.</p>
                                 </div>
  
                                 <div class="form-group">
@@ -339,19 +345,51 @@ class ServiceLogBook extends HTMLElement {
         // Form Submit
         const form = this.querySelector('#log-form');
         if (form) {
+            const categorySelect = this.querySelector('#log-category');
+            const dateInput = this.querySelector('#log-date');
+            const nextInspectionGroup = this.querySelector('#log-next-inspection-group');
+            const nextInspectionInput = this.querySelector('#log-next-inspection');
+
+            const syncNextInspectionField = () => {
+                const isInspection = categorySelect?.value === 'inspection';
+                if (nextInspectionGroup) {
+                    nextInspectionGroup.hidden = !isInspection;
+                }
+                if (isInspection && dateInput?.value && nextInspectionInput && !nextInspectionInput.value) {
+                    nextInspectionInput.value = computeNextInspectionDate(dateInput.value) || '';
+                }
+            };
+
+            categorySelect?.addEventListener('change', syncNextInspectionField);
+            dateInput?.addEventListener('change', () => {
+                if (categorySelect?.value === 'inspection' && nextInspectionInput) {
+                    nextInspectionInput.value = computeNextInspectionDate(dateInput.value) || '';
+                }
+            });
+            syncNextInspectionField();
+
             form.addEventListener('submit', (e) => {
                 e.preventDefault();
                 const vehicle = store.vehicles.find(v => v.id === store.selectedVehicleId);
                 if (vehicle) {
+                    const category = this.querySelector('#log-category').value;
+                    const date = this.querySelector('#log-date').value;
+                    let nextInspectionDate;
+
+                    if (category === 'inspection') {
+                        nextInspectionDate = this.querySelector('#log-next-inspection').value
+                            || computeNextInspectionDate(date);
+                    }
+
                     const payload = {
                         id: this.isEditMode && this.editingLogId ? this.editingLogId : 'log-' + Date.now(),
                         vehicleId: vehicle.id,
-                        date: this.querySelector('#log-date').value,
+                        date,
                         mileage: parseInt(this.querySelector('#log-mileage').value) || 0,
                         workDone: this.querySelector('#log-work').value,
                         cost: parseFloat(this.querySelector('#log-cost').value) || 0,
-                        nextInspectionDate: this.querySelector('#log-next-inspection').value || undefined,
-                        category: this.querySelector('#log-category').value,
+                        nextInspectionDate,
+                        category,
                         notes: this.querySelector('#log-notes').value || undefined
                     };
 

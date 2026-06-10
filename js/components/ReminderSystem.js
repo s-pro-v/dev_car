@@ -1,11 +1,33 @@
 import { store, escapeHTML } from '../lib/store.js';
 import { daysUntil } from '../lib/dateUtils.js';
+import { analyzePlannedReplacements } from '../lib/maintenanceUtils.js';
 import { refreshIcons } from '../lib/icons.js';
+
+const SEVERITY_LABELS = {
+    critical: 'Pilne',
+    warning: 'Uwaga',
+    info: 'Informacja',
+    success: 'OK'
+};
+
+const CATEGORY_LABELS = {
+    SKP: 'Przegląd',
+    OC: 'Ubezpieczenie',
+    Olej: 'Serwis oleju',
+    'Części': 'Wymiany'
+};
+
+const CATEGORY_CODES = {
+    SKP: 'SKP',
+    OC: 'OC',
+    Olej: 'OLEJ',
+    'Części': 'CZĘŚCI'
+};
 
 class ReminderSystem extends HTMLElement {
     constructor() {
         super();
-        this.showExtendedTips = {};
+        this.selectedAlertId = null;
     }
 
     connectedCallback() {
@@ -15,37 +37,18 @@ class ReminderSystem extends HTMLElement {
 
     disconnectedCallback() {
         if (this.unsubscribe) this.unsubscribe();
-    }
-
-    calculateDaysRemaining(dueDateStr) {
-        return daysUntil(dueDateStr);
+        document.body.classList.remove('alert-drawer-open');
     }
 
     formatDate(dateStr) {
-        if (!dateStr) return 'Brak informacji';
+        if (!dateStr) return 'Brak daty';
         const d = new Date(dateStr);
         return d.toLocaleDateString('pl-PL', { year: 'numeric', month: 'long', day: 'numeric' });
     }
 
-    toggleTip(id) {
-        this.showExtendedTips[id] = !this.showExtendedTips[id];
-        this.render();
-    }
-
-    render() {
-        const vehicle = store.vehicles.find(v => v.id === store.selectedVehicleId);
-        if (!vehicle) {
-            this.innerHTML = `
-                <div class="reminders-panel reminders-panel--empty">
-                    <p class="empty-state-desc">Wybierz lub dodaj pojazd, aby zobaczyć alerty serwisowe.</p>
-                </div>
-            `;
-            refreshIcons();
-            return;
-        }
-
-        const inspectionDays = this.calculateDaysRemaining(vehicle.nextInspectionDate);
-        const insuranceDays = this.calculateDaysRemaining(vehicle.insuranceDueDate);
+    buildAlerts(vehicle) {
+        const inspectionDays = daysUntil(vehicle.nextInspectionDate);
+        const insuranceDays = daysUntil(vehicle.insuranceDueDate);
 
         const activeLogs = store.serviceLogs.filter(log => log.vehicleId === vehicle.id);
         const oilLogs = activeLogs.filter(log => log.category === 'oil_fluids');
@@ -59,80 +62,83 @@ class ReminderSystem extends HTMLElement {
         }
 
         const mileageSinceOil = lastOilMileage !== null ? vehicle.mileage - lastOilMileage : null;
-
-        const plannedHighPriority = store.replacementItems.filter(
-            item => item.vehicleId === vehicle.id && item.status === 'planned' && item.priority === 'high'
-        );
+        const replacementAnalysis = analyzePlannedReplacements(vehicle, store.replacementItems);
 
         const alerts = [];
 
-        // 1. INSPECTION
         if (inspectionDays !== null) {
             if (inspectionDays < 0) {
                 alerts.push({
                     id: 'inspection_overdue',
                     type: 'critical',
-                    title: 'Przegląd techniczny wygasł!',
-                    shortDesc: `Twój termin okresowego badania technicznego minął ${Math.abs(inspectionDays)} dni temu (${this.formatDate(vehicle.nextInspectionDate)}).`,
-                    infoLabel: 'KARA OD 1500 ZŁ + RYZYKO ZATRZYMANIA DOWODU REJESTRACYJNEGO',
-                    helpTip: 'Bez ważnego badania technicznego ubezpieczyciel OC/AC może odmówić wypłaty odszkodowania po kolizji z Twojej winy. Niezwłocznie udaj się na Stację Kontroli Pojazdów (SKP). Diagnosta sprawdzi zbieżność, analizę spalin, wycieki płynów oraz siłę hamowania.',
+                    category: 'SKP',
+                    title: 'Przegląd techniczny wygasł',
+                    shortDesc: `Termin minął ${Math.abs(inspectionDays)} dni temu (${this.formatDate(vehicle.nextInspectionDate)}).`,
+                    infoLabel: 'Możliwa kara od 1500 zł i zatrzymanie dowodu rejestracyjnego.',
+                    helpTip: 'Bez ważnego badania technicznego ubezpieczyciel może odmówić wypłaty odszkodowania. Umów wizytę w SKP — diagnosta sprawdzi hamulce, zbieżność, spaliny i oświetlenie.',
                     icon: 'alert-triangle',
-                    actionText: 'Zarejestruj przegląd',
+                    actionText: 'Zapisz przegląd w ewidencji',
                     actionTab: 'logs'
                 });
             } else if (inspectionDays <= 14) {
                 alerts.push({
                     id: 'inspection_due_soon',
                     type: 'warning',
-                    title: 'Konieczność wykonania badania technicznego',
-                    shortDesc: `Kolejne urzędowe badanie techniczne za ${inspectionDays} dni (${this.formatDate(vehicle.nextInspectionDate)}).`,
-                    infoLabel: 'ZALECANA REZERWACJA TERMINU W SKP',
-                    helpTip: 'Przed wizytą upewnij się, że nie palą się żadne kontrolki ostrzegawcze (np. Check Engine) i sprawdź oświetlenie (żarówki tablicy rejestracyjnej, pozycje, kierunkowskazy). Zabierz ze sobą 98 PLN (lub 161 PLN jeśli auto ma instalację LPG).',
+                    category: 'SKP',
+                    title: 'Zbliża się termin SKP',
+                    shortDesc: `Badanie techniczne za ${inspectionDays} dni (${this.formatDate(vehicle.nextInspectionDate)}).`,
+                    infoLabel: 'Warto zarezerwować termin w stacji diagnostycznej.',
+                    helpTip: 'Przed wizytą sprawdź kontrolki, oświetlenie i tablicę rejestracyjną. Przygotuj ok. 98 zł (161 zł przy instalacji LPG).',
                     icon: 'calendar',
-                    actionText: 'Szczegóły ewidencji',
+                    actionText: 'Otwórz ewidencję',
                     actionTab: 'logs'
                 });
             } else {
                 alerts.push({
                     id: 'inspection_ok',
                     type: 'success',
+                    category: 'SKP',
                     title: 'Badanie techniczne ważne',
-                    shortDesc: `Pozostało jeszcze ${inspectionDays} dni ważności dowodu (${this.formatDate(vehicle.nextInspectionDate)}).`,
-                    helpTip: 'Twój pojazd posiada aktualne dopuszczenie do ruchu drogowego. Kolejna weryfikacja diagnostyczna nie wymaga pośpiechu.',
-                    icon: 'shield-check'
+                    shortDesc: `Pozostało ${inspectionDays} dni do kolejnego terminu (${this.formatDate(vehicle.nextInspectionDate)}).`,
+                    helpTip: 'Pojazd ma aktualne dopuszczenie do ruchu. Kolejna wizyta w SKP nie jest na razie pilna.',
+                    icon: 'clipboard-check'
                 });
             }
         } else {
             alerts.push({
                 id: 'inspection_missing',
                 type: 'info',
-                title: 'Uzupełnij datę przeglądu technicznego',
-                shortDesc: 'Nie zarejestrowano daty kolejnego badania dla tego auta.',
-                helpTip: 'Przejdź do edycji pojazdu i dopisz datę kolejnego urzędowego badania technicznego, aby system automatycznie przypomniał Ci o wizycie w SKP.',
+                category: 'SKP',
+                title: 'Brak daty przeglądu',
+                shortDesc: 'Uzupełnij datę kolejnego badania technicznego w danych pojazdu.',
+                helpTip: 'Edytuj pojazd i wpisz termin SKP — aplikacja sama przypomni o wizycie.',
                 icon: 'info'
             });
         }
 
-        // 2. INSURANCE
         if (insuranceDays !== null) {
             if (insuranceDays < 0) {
                 alerts.push({
                     id: 'insurance_overdue',
                     type: 'critical',
-                    title: 'Brak ubezpieczenia OC!',
-                    shortDesc: `Polisa ubezpieczeniowa wygasła ${Math.abs(insuranceDays)} dni temu (${this.formatDate(vehicle.insuranceDueDate)}).`,
-                    infoLabel: 'RYZYKO KARY OD UFG DO 8480 ZŁ (KARA NAWET ZA JEDEN DZIEŃ ZWŁOKI)',
-                    helpTip: 'Ubezpieczeniowy Fundusz Gwarancyjny nakłada wysokie kary finansowe za brak ciągłości OC, nawet gdy auto stoi bezczynnie w garażu. Niezwłocznie przedłuż polisę taryfową online u agenta.',
-                    icon: 'alert-triangle'
+                    category: 'OC',
+                    title: 'Brak ważnego ubezpieczenia OC',
+                    shortDesc: `Polisa wygasła ${Math.abs(insuranceDays)} dni temu (${this.formatDate(vehicle.insuranceDueDate)}).`,
+                    infoLabel: 'UFG może nałożyć karę — nawet gdy auto stoi w garażu.',
+                    helpTip: 'Przedłuż polisę OC jak najszybciej u swojego agenta lub online. Jazda bez OC jest nielegalna.',
+                    icon: 'alert-triangle',
+                    actionText: 'Przejdź do pulpitu',
+                    actionTab: 'pulpit'
                 });
             } else if (insuranceDays <= 30) {
                 alerts.push({
                     id: 'insurance_due_soon',
                     type: 'warning',
-                    title: 'Zbliża się płatność polisy OC',
-                    shortDesc: `Ubezpieczenie OC traci ważność za ${insuranceDays} dni (${this.formatDate(vehicle.insuranceDueDate)}).`,
-                    infoLabel: 'ZALECANE PORÓWNANIE OFERT KONKURENCYJNYCH',
-                    helpTip: 'Aktualna polisa automatycznie wznowi się na kolejny rok (by uniknąć przerw), ale najczęściej nowa cena taryfowa jest wyższa niż oferty promocyjne u konkurencji. Warto porównać ceny 14 dni przed końcem ubezpieczenia.',
+                    category: 'OC',
+                    title: 'Kończy się polisa OC',
+                    shortDesc: `Ubezpieczenie traci ważność za ${insuranceDays} dni (${this.formatDate(vehicle.insuranceDueDate)}).`,
+                    infoLabel: 'Porównaj oferty ok. 2 tygodnie przed końcem polisy.',
+                    helpTip: 'Automatyczne wznowienie bywa droższe niż oferta u konkurencji. Sprawdź ceny przed przedłużeniem.',
                     icon: 'shield-check',
                     actionText: 'Przejdź do pulpitu',
                     actionTab: 'pulpit'
@@ -141,27 +147,28 @@ class ReminderSystem extends HTMLElement {
                 alerts.push({
                     id: 'insurance_ok',
                     type: 'success',
+                    category: 'OC',
                     title: 'Ubezpieczenie OC aktywne',
-                    shortDesc: `Twoja polisa chroni auto jeszcze przez ${insuranceDays} dni.`,
-                    helpTip: 'Masz pełne bezpieczeństwo cywilne w trasie. Spokojna głowa.',
+                    shortDesc: `Polisa ważna jeszcze ${insuranceDays} dni.`,
+                    helpTip: 'Masz aktualne ubezpieczenie odpowiedzialności cywilnej.',
                     icon: 'shield-check'
                 });
             }
         }
 
-        // 3. OIL
         const MAX_OIL_KM = 15000;
         if (mileageSinceOil !== null) {
             if (mileageSinceOil >= MAX_OIL_KM) {
                 alerts.push({
                     id: 'oil_exceeded',
                     type: 'critical',
-                    title: 'Olej silnikowy do natychmiastowej wymiany!',
-                    shortDesc: `Przejechałeś już ${mileageSinceOil.toLocaleString('pl-PL')} km od ostatniego serwisu olejowego (zalecana wymiana co max 15k).`,
-                    infoLabel: 'UWAGA: STARY OLEJ TRACI LEPKOŚĆ, CO PROWADZI DO ZATARCIA TURBINY',
-                    helpTip: 'Zanieczyszczenia i opiłki metalu osiadające w filtrze oraz degradacja wiskozowa oleju drastycznie skracają żywotność panewek wału korbowego i układów rozrządu ze zmienną fazą. Umów wizytę w warsztacie w tym tygodniu.',
+                    category: 'Olej',
+                    title: 'Wymiana oleju po terminie',
+                    shortDesc: `Od ostatniego serwisu olejowego minęło ${mileageSinceOil.toLocaleString('pl-PL')} km (limit: 15 000 km).`,
+                    infoLabel: 'Stary olej przyspiesza zużycie silnika.',
+                    helpTip: 'Umów wymianę oleju i filtrów w warsztacie. Stosuj lepkość i normę zalecaną przez producenta.',
                     icon: 'alert-triangle',
-                    actionText: 'Zapisz nową wymianę',
+                    actionText: 'Dodaj wpis serwisowy',
                     actionTab: 'logs'
                 });
             } else if (mileageSinceOil >= 10000) {
@@ -169,12 +176,15 @@ class ReminderSystem extends HTMLElement {
                 alerts.push({
                     id: 'oil_due_soon',
                     type: 'warning',
-                    title: 'Zaplanuj zakup oleju i filtrów',
-                    shortDesc: `Od wymiany oleju przejechano ${mileageSinceOil.toLocaleString('pl-PL')} km. Pozostało ok. ${remaining.toLocaleString('pl-PL')} km interwału.`,
-                    infoLabel: 'ZALECANY PRZEGLĄD PRZY PRZEBIEGU ' + (lastOilReplacementMileage ? (lastOilReplacementMileage + MAX_OIL_KM).toLocaleString('pl-PL') : '') + ' KM',
-                    helpTip: 'Kup zestaw dedykowanych filtrów olejowych, powietrza oraz kabinowy. Sprawdź specyfikację lepkości i normy producenta (np. VW 507.00 dla silników TDI lub VW 504.00 dla benzynowych TFSI). Zaplanuj wizytę w warsztacie z wyprzedzeniem.',
+                    category: 'Olej',
+                    title: 'Zbliża się wymiana oleju',
+                    shortDesc: `Przejechano ${mileageSinceOil.toLocaleString('pl-PL')} km od wymiany. Zostało ok. ${remaining.toLocaleString('pl-PL')} km.`,
+                    infoLabel: lastOilReplacementMileage
+                        ? `Zalecany serwis przy ${(lastOilReplacementMileage + MAX_OIL_KM).toLocaleString('pl-PL')} km.`
+                        : 'Zaplanuj serwis olejowy z wyprzedzeniem.',
+                    helpTip: 'Kup filtry oleju, powietrza i kabinowy. Sprawdź specyfikację oleju dla Twojego silnika.',
                     icon: 'clock',
-                    actionText: 'Przeglądaj historię',
+                    actionText: 'Historia serwisu',
                     actionTab: 'logs'
                 });
             } else {
@@ -182,174 +192,333 @@ class ReminderSystem extends HTMLElement {
                 alerts.push({
                     id: 'oil_ok',
                     type: 'success',
-                    title: 'Olej silnikowy w doskonałej kondycji',
-                    shortDesc: `Wymieniono ${mileageSinceOil.toLocaleString('pl-PL')} km temu (Kolejny serwis za ${remaining.toLocaleString('pl-PL')} km).`,
-                    helpTip: 'Czysty olej zachowuje wszystkie właściwości redukcji tarcia. Monitoruj regularnie poziom oleju bagnetem raz w miesiącu.',
-                    icon: 'shield-check'
+                    category: 'Olej',
+                    title: 'Olej w normie',
+                    shortDesc: `Od wymiany ${mileageSinceOil.toLocaleString('pl-PL')} km. Kolejny serwis za ${remaining.toLocaleString('pl-PL')} km.`,
+                    helpTip: 'Olej jest w bezpiecznym interwale. Kontroluj poziom bagnetem raz w miesiącu.',
+                    icon: 'droplet'
                 });
             }
         } else {
             alerts.push({
                 id: 'oil_missing',
                 type: 'warning',
-                title: 'Brak danych o wymianie oleju',
-                shortDesc: 'Nie odnaleźliśmy żadnych zarejestrowanych wpisów o wymianie filtrów i oleju silnikowego.',
-                infoLabel: 'NIEZBĘDNE SPRAWDZENIE STANU SILNIKA',
-                helpTip: 'Wprowadź historyczny koszt i przebieg ostatniego serwisu olejowego w zakładce "Ewidencja Serwisowa" jako pozycję z kategorii "Filtry, Oleje i Płyny", aby system mógł automatycznie prognozować zużycie.',
+                category: 'Olej',
+                title: 'Brak wpisu o wymianie oleju',
+                shortDesc: 'Nie ma zapisu serwisu olejowego w ewidencji.',
+                infoLabel: 'Bez tego system nie policzy kolejnego terminu.',
+                helpTip: 'Dodaj wpis w ewidencji (kategoria „Filtry, oleje i płyny”) z datą i przebiegiem ostatniej wymiany.',
                 icon: 'info',
-                actionText: 'Dodaj wpis oleju',
+                actionText: 'Dodaj wpis',
                 actionTab: 'logs'
             });
         }
 
-        // 4. URGENT PARTS
-        if (plannedHighPriority.length > 0) {
-            alerts.push({
-                id: 'urgent_parts',
-                type: 'warning',
-                title: `Planowane pilne wymiany części (${plannedHighPriority.length})`,
-                shortDesc: `Masz zapisane pilne zadania techniczne dla ${escapeHTML(vehicle.brand)} ${escapeHTML(vehicle.model)}.`,
-                infoLabel: 'KLUCZOWE BEZPIECZEŃSTWO DRÓG',
-                helpTip: `Lista zaplanowanych elementów o wysokim priorytecie: ${plannedHighPriority.map(p => escapeHTML(p.itemName)).join(', ')}. Po wymianie części u mechanika, oznacz te pozycje jako "Wymienione", a system automatycznie utworzy wpis w księdze kosztów.`,
-                icon: 'wrench',
-                actionText: 'Zobacz tablicę części',
-                actionTab: 'wymiany'
-            });
+        if (replacementAnalysis.plannedCount > 0) {
+            const urgentNames = [
+                ...replacementAnalysis.overdueItems,
+                ...replacementAnalysis.soonItems
+            ].slice(0, 4).map(item => item.itemName);
+
+            if (replacementAnalysis.overdueCount > 0) {
+                alerts.push({
+                    id: 'parts_overdue',
+                    type: 'critical',
+                    category: 'Części',
+                    title: `Zaległe wymiany (${replacementAnalysis.overdueCount})`,
+                    shortDesc: `${replacementAnalysis.overdueCount} zadań po terminie lub przebiegu.`,
+                    infoLabel: urgentNames.join(', '),
+                    helpTip: 'Sprawdź tablicę wymian — zadania oznaczone automatycznie wg marki pojazdu mają terminy km i daty. Po naprawie oznacz jako wykonane, aby zaplanować kolejny interwał.',
+                    icon: 'alert-triangle',
+                    actionText: 'Tablica wymian',
+                    actionTab: 'wymiany'
+                });
+            } else if (replacementAnalysis.soonCount > 0) {
+                alerts.push({
+                    id: 'parts_due_soon',
+                    type: 'warning',
+                    category: 'Części',
+                    title: `Zbliżające się wymiany (${replacementAnalysis.soonCount})`,
+                    shortDesc: `${replacementAnalysis.soonCount} zadań wymaga uwagi w najbliższym czasie.`,
+                    infoLabel: urgentNames.join(', '),
+                    helpTip: 'System monitoruje przebieg i daty z harmonogramu serwisowego dopasowanego do marki pojazdu.',
+                    icon: 'wrench',
+                    actionText: 'Tablica wymian',
+                    actionTab: 'wymiany'
+                });
+            } else {
+                alerts.push({
+                    id: 'parts_ok',
+                    type: 'success',
+                    category: 'Części',
+                    title: 'Harmonogram wymian aktualny',
+                    shortDesc: `${replacementAnalysis.plannedCount} zaplanowanych zadań — brak pilnych terminów.`,
+                    helpTip: 'Po dodaniu pojazdu aplikacja tworzy typowy harmonogram wg producenta. Priorytety rosną automatycznie przy zbliżaniu się terminu.',
+                    icon: 'layers'
+                });
+            }
         }
 
-        // Sort: critical first, warning second, info third, success at the end
         const priorityOrder = { critical: 0, warning: 1, info: 2, success: 3 };
         alerts.sort((a, b) => priorityOrder[a.type] - priorityOrder[b.type]);
 
-        const criticalCount = alerts.filter(a => a.type === 'critical').length;
-        const warningCount = alerts.filter(a => a.type === 'warning').length;
+        return alerts.map(alert => ({
+            ...alert,
+            severityLabel: SEVERITY_LABELS[alert.type],
+            tabLabel: CATEGORY_LABELS[alert.category] || alert.category,
+            tabCode: CATEGORY_CODES[alert.category] || alert.category
+        }));
+    }
+
+    getStatusMeta(alert, vehicle) {
+        const inspectionDays = daysUntil(vehicle.nextInspectionDate);
+        const insuranceDays = daysUntil(vehicle.insuranceDueDate);
+        const MAX_OIL_KM = 15000;
+
+        const oilLogs = store.serviceLogs
+            .filter(log => log.vehicleId === vehicle.id && log.category === 'oil_fluids')
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
+        const lastOilMileage = oilLogs.length > 0 ? oilLogs[0].mileage : null;
+        const mileageSinceOil = lastOilMileage !== null ? vehicle.mileage - lastOilMileage : null;
+
+        const replacementAnalysis = analyzePlannedReplacements(vehicle, store.replacementItems);
+        const { plannedCount, urgentCount, overdueCount, soonCount } = replacementAnalysis;
+
+        if (alert.category === 'OC') {
+            if (insuranceDays === null) {
+                return { badge: 'BRAK DANYCH', headline: 'Uzupełnij datę polisy', sub: alert.shortDesc, percent: 0 };
+            }
+            if (insuranceDays < 0) {
+                return {
+                    badge: 'WYGASŁA',
+                    headline: `Polisa wygasła ${Math.abs(insuranceDays)} dni temu`,
+                    sub: `${Math.abs(insuranceDays)} dni po terminie`,
+                    percent: 0
+                };
+            }
+            if (insuranceDays <= 30) {
+                return {
+                    badge: 'UWAGA',
+                    headline: `Twoja polisa wygasa za: ${insuranceDays} dni`,
+                    sub: `${insuranceDays} dni pozostało`,
+                    percent: Math.max(8, Math.round((insuranceDays / 30) * 100))
+                };
+            }
+            return {
+                badge: 'AKTYWNA',
+                headline: `Polisa ważna jeszcze ${insuranceDays} dni`,
+                sub: `${insuranceDays} dni pozostało`,
+                percent: Math.min(100, Math.max(40, Math.round((insuranceDays / 365) * 100)))
+            };
+        }
+
+        if (alert.category === 'SKP') {
+            if (inspectionDays === null) {
+                return { badge: 'BRAK DANYCH', headline: 'Uzupełnij datę SKP', sub: alert.shortDesc, percent: 0 };
+            }
+            if (inspectionDays < 0) {
+                return {
+                    badge: 'WYGASŁO',
+                    headline: `Badanie wygasło ${Math.abs(inspectionDays)} dni temu`,
+                    sub: `${Math.abs(inspectionDays)} dni po terminie`,
+                    percent: 0
+                };
+            }
+            if (inspectionDays <= 14) {
+                return {
+                    badge: 'UWAGA',
+                    headline: `SKP za ${inspectionDays} dni`,
+                    sub: `${inspectionDays} dni pozostało`,
+                    percent: Math.max(8, Math.round((inspectionDays / 14) * 100))
+                };
+            }
+            return {
+                badge: 'WAŻNE',
+                headline: `Badanie ważne jeszcze ${inspectionDays} dni`,
+                sub: `${inspectionDays} dni pozostało`,
+                percent: Math.min(100, Math.max(40, Math.round((inspectionDays / 365) * 100)))
+            };
+        }
+
+        if (alert.category === 'Olej') {
+            if (mileageSinceOil === null) {
+                return { badge: 'BRAK WPISU', headline: 'Brak historii oleju', sub: alert.shortDesc, percent: 0 };
+            }
+            if (mileageSinceOil >= MAX_OIL_KM) {
+                return {
+                    badge: 'PO TERMINIE',
+                    headline: `${mileageSinceOil.toLocaleString('pl-PL')} km od wymiany`,
+                    sub: 'Limit 15 000 km przekroczony',
+                    percent: 0
+                };
+            }
+            const remaining = MAX_OIL_KM - mileageSinceOil;
+            const percent = Math.max(8, Math.round((remaining / MAX_OIL_KM) * 100));
+            return {
+                badge: mileageSinceOil >= 10000 ? 'UWAGA' : 'OK',
+                headline: `Do wymiany ok. ${remaining.toLocaleString('pl-PL')} km`,
+                sub: `${mileageSinceOil.toLocaleString('pl-PL')} km od ostatniego serwisu`,
+                percent
+            };
+        }
+
+        return {
+            badge: overdueCount > 0 ? 'ZALEGŁE' : soonCount > 0 ? 'UWAGA' : plannedCount > 0 ? 'ZAPLANOWANE' : 'OK',
+            headline: overdueCount > 0
+                ? `${overdueCount} zadań po terminie`
+                : soonCount > 0
+                    ? `${soonCount} wymian wkrótce`
+                    : plannedCount > 0
+                        ? `${plannedCount} zadań w harmonogramie`
+                        : 'Brak zaplanowanych wymian',
+            sub: urgentCount > 0 ? `${urgentCount} wymaga uwagi` : `${plannedCount} zaplanowanych`,
+            percent: plannedCount === 0
+                ? 100
+                : Math.max(8, Math.round(((plannedCount - urgentCount) / plannedCount) * 100))
+        };
+    }
+
+    toggleAlert(id) {
+        this.selectedAlertId = this.selectedAlertId === id ? null : id;
+        this.render();
+    }
+
+    closeDrawer() {
+        this.selectedAlertId = null;
+        this.render();
+    }
+
+    renderTab(alert) {
+        const isOpen = this.selectedAlertId === alert.id;
+        return `
+            <button
+                type="button"
+                class="alert-tab alert-tab--${escapeHTML(alert.type)} ${isOpen ? 'alert-tab--open' : ''}"
+                data-id="${escapeHTML(alert.id)}"
+                aria-expanded="${isOpen}"
+                aria-label="${escapeHTML(alert.tabLabel)} — ${escapeHTML(alert.severityLabel)}"
+                title="${escapeHTML(alert.title)}"
+            >
+                <span class="alert-tab__icon">
+                    <i data-lucide="${escapeHTML(alert.icon)}"></i>
+                </span>
+                <span class="alert-tab__code">${escapeHTML(alert.tabCode)}</span>
+                <span class="alert-tab__label">${escapeHTML(alert.tabLabel)}</span>
+                ${alert.type === 'critical' || alert.type === 'warning' ? `<span class="alert-tab__dot" aria-hidden="true"></span>` : ''}
+            </button>
+        `;
+    }
+
+    renderDrawer(alert, vehicle) {
+        const status = this.getStatusMeta(alert, vehicle);
+        const typeClass = `alert-drawer__inner--${alert.type}`;
+
+        return `
+            <aside class="alert-drawer alert-drawer--open" aria-label="Szczegóły alertu ${escapeHTML(alert.category)}">
+                <div class="alert-drawer__inner ${typeClass}">
+                    <header class="alert-drawer__toolbar">
+                        <button type="button" class="alert-drawer__close btn-icon" aria-label="Zamknij panel">
+                            <i data-lucide="x"></i>
+                        </button>
+                    </header>
+
+                    <div class="alert-status">
+                        <div class="alert-status__head">
+                            <span class="alert-status__title">Status</span>
+                            <span class="alert-status__badge alert-status__badge--${escapeHTML(alert.type)}">${escapeHTML(status.badge)}</span>
+                        </div>
+                        <p class="alert-status__headline">${escapeHTML(status.headline)}</p>
+                        <p class="alert-status__sub">${escapeHTML(status.sub)}</p>
+                        <div class="alert-status__bar" role="presentation">
+                            <span class="alert-status__bar-fill alert-status__bar-fill--${escapeHTML(alert.type)}" style="width: ${status.percent}%"></span>
+                        </div>
+                    </div>
+
+                    <div class="alert-detail">
+                        <div class="alert-detail__meta">
+                            <span class="alert-detail__category">${escapeHTML(alert.category)}</span>
+                            <span class="alert-detail__severity alert-detail__severity--${escapeHTML(alert.type)}">${escapeHTML(alert.severityLabel)}</span>
+                        </div>
+
+                        <h3 class="alert-detail__title">${escapeHTML(alert.title)}</h3>
+                        <p class="alert-detail__summary">${escapeHTML(alert.shortDesc)}</p>
+
+                        ${alert.infoLabel ? `
+                            <div class="alert-detail__highlight">
+                                <span class="alert-detail__highlight-label">Na co uważać</span>
+                                <p>${escapeHTML(alert.infoLabel)}</p>
+                            </div>
+                        ` : ''}
+
+                        <div class="alert-detail__help">
+                            <h4 class="alert-detail__help-title">
+                                <i data-lucide="info"></i>
+                                Wyjaśnienie
+                            </h4>
+                            <p>${escapeHTML(alert.helpTip)}</p>
+                        </div>
+
+                        ${alert.actionText && alert.actionTab ? `
+                            <button type="button" class="btn-primary alert-detail__action" data-tab="${escapeHTML(alert.actionTab)}">
+                                <span>${escapeHTML(alert.actionText)}</span>
+                                <i data-lucide="arrow-right"></i>
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            </aside>
+        `;
+    }
+
+    render() {
+        const vehicle = store.vehicles.find(v => v.id === store.selectedVehicleId);
+        const drawerOpen = !!this.selectedAlertId;
+
+        document.body.classList.toggle('alert-drawer-open', drawerOpen);
+
+        if (!vehicle) {
+            this.innerHTML = '';
+            refreshIcons();
+            return;
+        }
+
+        const alerts = this.buildAlerts(vehicle);
+        if (this.selectedAlertId && !alerts.some(a => a.id === this.selectedAlertId)) {
+            this.selectedAlertId = null;
+        }
+
+        const selected = alerts.find(a => a.id === this.selectedAlertId);
 
         this.innerHTML = `
-            <div class="reminders-panel" data-tutorial="reminders-panel">
-                
-                <!-- Reminder Header Bar -->
-                <div class="reminders-header">
-                    <div class="reminders-header__left">
-                        <div class="reminders-bell-wrapper">
-                            <i data-lucide="bell"></i>
-                        </div>
-                        <div>
-                            <h3 class="reminders-title">Aktywny System Przypomnień i Alertów</h3>
-                            <p class="reminders-desc">
-                                Informacje i alerty eksploatacyjne dla pojazdu <strong>${escapeHTML(vehicle.brand)} ${escapeHTML(vehicle.model)}</strong> (${escapeHTML(vehicle.plateNumber)})
-                            </p>
-                        </div>
-                    </div>
+            <div class="alert-system ${drawerOpen ? 'alert-system--drawer-open' : ''}" data-tutorial="reminders-panel">
+                <div class="alert-system__backdrop ${drawerOpen ? 'alert-system__backdrop--open' : ''}" aria-hidden="${!drawerOpen}"></div>
 
-                    <!-- Dynamic status Pill alerts summaries -->
-                    <div class="reminders-pills">
-                        ${criticalCount > 0 ? `
-                            <span class="status-pill status-pill--critical">
-                                ${criticalCount} CRITICAL ALERT${criticalCount > 1 ? 'S' : ''}
-                            </span>
-                        ` : ''}
-                        ${warningCount > 0 ? `
-                            <span class="status-pill status-pill--warning">
-                                ${warningCount} Ostrzeżenie${warningCount > 1 ? 'a' : 'ie'}
-                            </span>
-                        ` : ''}
-                        ${criticalCount === 0 && warningCount === 0 ? `
-                            <span class="status-pill status-pill--safe">
-                                Pojazd zweryfikowany: Bezpieczny
-                            </span>
-                        ` : ''}
-                    </div>
-                </div>
+                ${selected ? this.renderDrawer(selected, vehicle) : ''}
 
-                <!-- Primary Reminders List -->
-                <div class="reminders-list">
-                    <div class="reminders-grid">
-                        ${alerts.map(alert => {
-            const isOpen = this.showExtendedTips[alert.id] || false;
-
-            let cardModifier = 'alert-card--info';
-
-            if (alert.type === 'critical') {
-                cardModifier = 'alert-card--critical';
-            } else if (alert.type === 'warning') {
-                cardModifier = 'alert-card--warning';
-            } else if (alert.type === 'success') {
-                cardModifier = 'alert-card--success';
-            }
-
-            return `
-                                <div class="alert-card ${cardModifier}">
-                                    <div class="alert-card__top">
-                                        <div class="alert-card__header-row">
-                                            <div class="alert-icon">
-                                                <i data-lucide="${escapeHTML(alert.icon)}"></i>
-                                            </div>
-                                            <div>
-                                                <h4 class="alert-title">
-                                                    ${escapeHTML(alert.title)}
-                                                </h4>
-                                                <p class="alert-desc">
-                                                    ${escapeHTML(alert.shortDesc)}
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        ${alert.infoLabel ? `
-                                            <div class="alert-status-bar">
-                                                <span class="alert-status-bar__dot"></span>
-                                                <span class="alert-status-bar__label">Status prawno-techniczny: </span>
-                                                <span class="alert-status-bar__val">${escapeHTML(alert.infoLabel)}</span>
-                                            </div>
-                                        ` : ''}
-
-                                        ${isOpen ? `
-                                            <div class="alert-details">
-                                                <div class="alert-details__header">
-                                                    <i data-lucide="info"></i>
-                                                    <span>Dlaczego to jest ważne &amp; Wskazówki:</span>
-                                                </div>
-                                                <p>${escapeHTML(alert.helpTip)}</p>
-                                            </div>
-                                        ` : ''}
-                                    </div>
-
-                                    <!-- Bottom Interactive Row -->
-                                    <div class="alert-actions">
-                                        <button class="btn-toggle-tip" data-id="${escapeHTML(alert.id)}">
-                                            <span>${isOpen ? 'Ukryj wyjaśnienie' : 'Więcej szczegółów'}</span>
-                                            <i data-lucide="chevron-right" class="${isOpen ? 'rotate-90' : ''}"></i>
-                                        </button>
-                                        
-                                        ${alert.actionText && alert.actionTab ? `
-                                            <button class="btn-action-tab" data-tab="${escapeHTML(alert.actionTab)}">
-                                                <span>${escapeHTML(alert.actionText)}</span>
-                                                <i data-lucide="chevron-right"></i>
-                                            </button>
-                                        ` : ''}
-                                    </div>
-                                </div>
-                            `;
-        }).join('')}
-                    </div>
-                </div>
+                <nav class="alert-dock" aria-label="Alerty pojazdu">
+                    ${alerts.map(alert => this.renderTab(alert)).join('')}
+                </nav>
             </div>
         `;
 
         refreshIcons();
+        this.attachEventListeners();
+    }
 
-        // Hook events
-        this.querySelectorAll('.btn-toggle-tip').forEach(btn => {
+    attachEventListeners() {
+        this.querySelector('.alert-system__backdrop')?.addEventListener('click', () => this.closeDrawer());
+        this.querySelector('.alert-drawer__close')?.addEventListener('click', () => this.closeDrawer());
+
+        this.querySelectorAll('.alert-tab').forEach(btn => {
             btn.addEventListener('click', () => {
-                const id = btn.getAttribute('data-id');
-                this.toggleTip(id);
+                this.toggleAlert(btn.getAttribute('data-id'));
             });
         });
 
-        this.querySelectorAll('.btn-action-tab').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const tab = btn.getAttribute('data-tab');
-                document.dispatchEvent(new CustomEvent('navigate-tab', { detail: tab, bubbles: true }));
-            });
+        this.querySelector('.alert-detail__action')?.addEventListener('click', (e) => {
+            const tab = e.currentTarget.getAttribute('data-tab');
+            document.dispatchEvent(new CustomEvent('navigate-tab', { detail: tab, bubbles: true }));
+            this.closeDrawer();
         });
     }
 }

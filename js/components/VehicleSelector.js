@@ -1,7 +1,11 @@
 import { store, escapeHTML } from '../lib/store.js';
 import { destroyDateInputs, enhanceDateInputs } from '../lib/datePicker.js';
+import { destroyBrandInputs, enhanceBrandInputs, resolveBrandName } from '../lib/brandAutocomplete.js';
+import { destroyModelInputs, enhanceModelInputs, resolveModelName } from '../lib/modelAutocomplete.js';
+import { destroyEngineInputs, enhanceEngineInputs, resolveEngineName } from '../lib/engineAutocomplete.js';
+import { destroyYearInputs, enhanceYearInputs, resolveYear } from '../lib/yearAutocomplete.js';
 import { showConfirm } from '../lib/confirmDialog.js';
-import { getToday } from '../lib/dateUtils.js';
+import { daysUntil } from '../lib/dateUtils.js';
 import { refreshIcons } from '../lib/icons.js';
 
 class VehicleSelector extends HTMLElement {
@@ -22,10 +26,18 @@ class VehicleSelector extends HTMLElement {
     disconnectedCallback() {
         if (this.unsubscribe) this.unsubscribe();
         destroyDateInputs(this);
+        destroyBrandInputs(this);
+        destroyModelInputs(this);
+        destroyEngineInputs(this);
+        destroyYearInputs(this);
     }
 
     render() {
         destroyDateInputs(this);
+        destroyBrandInputs(this);
+        destroyModelInputs(this);
+        destroyEngineInputs(this);
+        destroyYearInputs(this);
 
         const vehicles = store.vehicles;
         const selectedId = store.selectedVehicleId;
@@ -65,7 +77,7 @@ class VehicleSelector extends HTMLElement {
                         <i data-lucide="calendar"></i>
                         <div>
                             <span class="spec-tile-label">Kolejny Przegląd</span>
-                            <span class="spec-tile-value ${activeCar.nextInspectionDate && new Date(activeCar.nextInspectionDate) < getToday()
+                            <span class="spec-tile-value ${activeCar.nextInspectionDate && daysUntil(activeCar.nextInspectionDate) < 0
                     ? 'spec-tile-value--warning'
                     : ''
                 }">
@@ -84,6 +96,18 @@ class VehicleSelector extends HTMLElement {
                             </span>
                         </div>
                     </div>
+
+                    ${activeCar.maintenanceProfileLabel ? `
+                    <div class="spec-tile">
+                        <i data-lucide="calendar-clock"></i>
+                        <div>
+                            <span class="spec-tile-label">Harmonogram serwisowy</span>
+                            <span class="spec-tile-value spec-tile-value--truncate" title="${escapeHTML(activeCar.maintenanceProfileLabel)}">
+                                ${escapeHTML(activeCar.maintenanceProfileLabel)}
+                            </span>
+                        </div>
+                    </div>
+                    ` : ''}
  
                 </div>
             `;
@@ -162,26 +186,62 @@ class VehicleSelector extends HTMLElement {
                             <form id="add-vehicle-form" class="form-grid">
                                 <div class="form-grid form-grid--2">
                                     <div class="form-group">
-                                        <label class="form-label">Marka *</label>
-                                        <input type="text" id="add-brand" required class="form-input" placeholder="np. Volkswagen">
+                                        <label class="form-label" for="add-brand">Marka <span class="form-label__required">*</span></label>
+                                        <input
+                                            type="text"
+                                            id="add-brand"
+                                            required
+                                            class="form-input"
+                                            placeholder="Zacznij pisać, np. Volks…"
+                                            autocomplete="off"
+                                            data-brand-autocomplete
+                                        >
                                     </div>
                                     <div class="form-group">
-                                        <label class="form-label">Model *</label>
-                                        <input type="text" id="add-model" required class="form-input" placeholder="np. Golf VII">
+                                        <label class="form-label" for="add-model">Model <span class="form-label__required">*</span></label>
+                                        <input
+                                            type="text"
+                                            id="add-model"
+                                            required
+                                            class="form-input"
+                                            placeholder="Najpierw wybierz markę"
+                                            autocomplete="off"
+                                            data-model-autocomplete
+                                            data-brand-input="#add-brand"
+                                        >
                                     </div>
                                 </div>
                                 <div class="form-grid form-grid--3">
                                     <div class="form-group">
-                                        <label class="form-label">Nr rejestracyjny *</label>
+                                        <label class="form-label">Nr rejestracyjny <span class="form-label__required">*</span></label>
                                         <input type="text" id="add-plate" required class="form-input form-input--uppercase" placeholder="np. PO12345">
                                     </div>
                                     <div class="form-group">
-                                        <label class="form-label">Rocznik</label>
-                                        <input type="number" id="add-year" value="2017" class="form-input">
+                                        <label class="form-label" for="add-year">Rocznik</label>
+                                        <input
+                                            type="text"
+                                            id="add-year"
+                                            class="form-input form-input--mono"
+                                            placeholder="Rocznik"
+                                            autocomplete="off"
+                                            inputmode="numeric"
+                                            data-year-autocomplete
+                                            data-brand-input="#add-brand"
+                                            data-model-input="#add-model"
+                                        >
                                     </div>
                                     <div class="form-group">
-                                        <label class="form-label">Silnik</label>
-                                        <input type="text" id="add-engine" class="form-input" placeholder="np. 2.0 TDI (150 KM)">
+                                        <label class="form-label" for="add-engine">Silnik</label>
+                                        <input
+                                            type="text"
+                                            id="add-engine"
+                                            class="form-input"
+                                            placeholder="Najpierw wybierz model"
+                                            autocomplete="off"
+                                            data-engine-autocomplete
+                                            data-brand-input="#add-brand"
+                                            data-model-input="#add-model"
+                                        >
                                     </div>
                                 </div>
                                 <div class="form-grid form-grid--2">
@@ -204,6 +264,11 @@ class VehicleSelector extends HTMLElement {
                                         <input type="date" id="add-insurance" class="form-input form-input--mono">
                                     </div>
                                 </div>
+                                <label class="form-check form-check--boxed">
+                                    <input type="checkbox" id="add-auto-schedule" checked>
+                                    <span>Wygeneruj harmonogram wymian wg marki pojazdu</span>
+                                </label>
+                                <p class="form-hint">Na podstawie marki i opisu silnika dodamy typowe interwały serwisowe (olej, płyn hamulcowy, rozrząd itd.) do tablicy wymian.</p>
                                 <div class="form-actions">
                                     <button type="button" class="close-modal-btn btn-secondary" data-modal="add">Anuluj</button>
                                     <button type="submit" class="btn-primary">Dodaj auto</button>
@@ -230,26 +295,66 @@ class VehicleSelector extends HTMLElement {
                             <form id="edit-vehicle-form" class="form-grid">
                                 <div class="form-grid form-grid--2">
                                     <div class="form-group">
-                                        <label class="form-label">Marka *</label>
-                                        <input type="text" id="edit-brand" required value="${escapeHTML(activeCar.brand)}" class="form-input">
+                                        <label class="form-label" for="edit-brand">Marka <span class="form-label__required">*</span></label>
+                                        <input
+                                            type="text"
+                                            id="edit-brand"
+                                            required
+                                            value="${escapeHTML(activeCar.brand)}"
+                                            class="form-input"
+                                            placeholder="Zacznij pisać markę"
+                                            autocomplete="off"
+                                            data-brand-autocomplete
+                                        >
                                     </div>
                                     <div class="form-group">
-                                        <label class="form-label">Model *</label>
-                                        <input type="text" id="edit-model" required value="${escapeHTML(activeCar.model)}" class="form-input">
+                                        <label class="form-label" for="edit-model">Model <span class="form-label__required">*</span></label>
+                                        <input
+                                            type="text"
+                                            id="edit-model"
+                                            required
+                                            value="${escapeHTML(activeCar.model)}"
+                                            class="form-input"
+                                            placeholder="Zacznij pisać model"
+                                            autocomplete="off"
+                                            data-model-autocomplete
+                                            data-brand-input="#edit-brand"
+                                        >
                                     </div>
                                 </div>
                                 <div class="form-grid form-grid--3">
                                     <div class="form-group">
-                                        <label class="form-label">Nr rejestracyjny *</label>
+                                        <label class="form-label">Nr rejestracyjny <span class="form-label__required">*</span></label>
                                         <input type="text" id="edit-plate" required value="${escapeHTML(activeCar.plateNumber)}" class="form-input form-input--uppercase">
                                     </div>
                                     <div class="form-group">
-                                        <label class="form-label">Rocznik</label>
-                                        <input type="number" id="edit-year" value="${escapeHTML(activeCar.year)}" class="form-input">
+                                        <label class="form-label" for="edit-year">Rocznik</label>
+                                        <input
+                                            type="text"
+                                            id="edit-year"
+                                            value="${escapeHTML(activeCar.year)}"
+                                            class="form-input form-input--mono"
+                                            placeholder="Rocznik"
+                                            autocomplete="off"
+                                            inputmode="numeric"
+                                            data-year-autocomplete
+                                            data-brand-input="#edit-brand"
+                                            data-model-input="#edit-model"
+                                        >
                                     </div>
                                     <div class="form-group">
-                                        <label class="form-label">Silnik</label>
-                                        <input type="text" id="edit-engine" value="${escapeHTML(activeCar.engine || '')}" class="form-input" placeholder="np. 2.0 TDI (150 KM)">
+                                        <label class="form-label" for="edit-engine">Silnik</label>
+                                        <input
+                                            type="text"
+                                            id="edit-engine"
+                                            value="${escapeHTML(activeCar.engine || '')}"
+                                            class="form-input"
+                                            placeholder="Zacznij pisać silnik"
+                                            autocomplete="off"
+                                            data-engine-autocomplete
+                                            data-brand-input="#edit-brand"
+                                            data-model-input="#edit-model"
+                                        >
                                     </div>
                                 </div>
                                 <div class="form-grid form-grid--2">
@@ -276,6 +381,11 @@ class VehicleSelector extends HTMLElement {
                                     <button type="button" class="close-modal-btn btn-secondary" data-modal="edit">Anuluj</button>
                                     <button type="submit" class="btn-primary">Zapisz auto</button>
                                 </div>
+                                <label class="form-check form-check--boxed">
+                                    <input type="checkbox" id="edit-regenerate-schedule">
+                                    <span>Przelicz harmonogram wymian wg nowej marki / silnika</span>
+                                </label>
+                                <p class="form-hint">Usuwa automatyczne zadania i tworzy je ponownie — ręcznie dodane pozycje pozostają.</p>
                             </form>
                         </div>
                     </div>
@@ -286,6 +396,10 @@ class VehicleSelector extends HTMLElement {
 
         refreshIcons();
         enhanceDateInputs(this);
+        enhanceBrandInputs(this);
+        enhanceModelInputs(this);
+        enhanceEngineInputs(this);
+        enhanceYearInputs(this);
 
         this.attachEventListeners();
     }
@@ -342,8 +456,8 @@ class VehicleSelector extends HTMLElement {
         if (addForm) {
             addForm.addEventListener('submit', (e) => {
                 e.preventDefault();
-                const brand = this.querySelector('#add-brand').value.trim();
-                const model = this.querySelector('#add-model').value.trim();
+                const brand = resolveBrandName(this.querySelector('#add-brand').value.trim());
+                const model = resolveModelName(brand, this.querySelector('#add-model').value.trim());
                 const plateNumber = this.querySelector('#add-plate').value.toUpperCase().trim();
 
                 if (!brand || !model || !plateNumber) return;
@@ -353,15 +467,20 @@ class VehicleSelector extends HTMLElement {
                     brand,
                     model,
                     plateNumber,
-                    year: parseInt(this.querySelector('#add-year').value, 10) || new Date().getFullYear(),
-                    engine: this.querySelector('#add-engine').value.trim(),
+                    year: resolveYear(brand, model, this.querySelector('#add-year').value),
+                    engine: resolveEngineName(brand, model, this.querySelector('#add-engine').value.trim()),
                     mileage: parseInt(this.querySelector('#add-mileage').value, 10) || 0,
                     vin: this.querySelector('#add-vin').value.toUpperCase().trim() || undefined,
                     nextInspectionDate: this.querySelector('#add-inspection').value || undefined,
                     insuranceDueDate: this.querySelector('#add-insurance').value || undefined
                 };
-                store.addVehicle(newCar);
+                const generateSchedule = this.querySelector('#add-auto-schedule')?.checked !== false;
+                const result = store.addVehicle(newCar, { generateSchedule });
                 this.closeModal('add');
+
+                if (result.generatedCount > 0) {
+                    document.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'wymiany', bubbles: true }));
+                }
             });
         }
 
@@ -371,19 +490,24 @@ class VehicleSelector extends HTMLElement {
                 e.preventDefault();
                 const activeCar = store.vehicles.find(v => v.id === store.selectedVehicleId);
                 if (activeCar) {
+                    const brand = resolveBrandName(this.querySelector('#edit-brand').value.trim());
+                    const model = resolveModelName(brand, this.querySelector('#edit-model').value.trim());
                     const updatedCar = {
                         id: activeCar.id,
-                        brand: this.querySelector('#edit-brand').value,
-                        model: this.querySelector('#edit-model').value,
+                        brand,
+                        model,
                         plateNumber: this.querySelector('#edit-plate').value.toUpperCase().trim(),
-                        year: parseInt(this.querySelector('#edit-year').value) || new Date().getFullYear(),
-                        engine: this.querySelector('#edit-engine').value,
+                        year: resolveYear(brand, model, this.querySelector('#edit-year').value),
+                        engine: resolveEngineName(brand, model, this.querySelector('#edit-engine').value.trim()),
                         mileage: parseInt(this.querySelector('#edit-mileage').value) || 0,
                         vin: this.querySelector('#edit-vin').value.toUpperCase().trim() || undefined,
                         nextInspectionDate: this.querySelector('#edit-inspection').value || undefined,
-                        insuranceDueDate: this.querySelector('#edit-insurance').value || undefined
+                        insuranceDueDate: this.querySelector('#edit-insurance').value || undefined,
+                        maintenanceProfile: activeCar.maintenanceProfile,
+                        maintenanceProfileLabel: activeCar.maintenanceProfileLabel
                     };
-                    store.updateVehicle(updatedCar);
+                    const regenerateSchedule = this.querySelector('#edit-regenerate-schedule')?.checked === true;
+                    store.updateVehicle(updatedCar, { regenerateSchedule });
                     this.closeModal('edit');
                 }
             });

@@ -1,5 +1,6 @@
 import { store, escapeHTML } from '../lib/store.js';
 import { daysUntil } from '../lib/dateUtils.js';
+import { analyzePlannedReplacements } from '../lib/maintenanceUtils.js';
 import { refreshIcons } from '../lib/icons.js';
 
 class VehicleDashboard extends HTMLElement {
@@ -37,7 +38,7 @@ class VehicleDashboard extends HTMLElement {
             score -= 10;
         }
 
-        const urgentParts = replacements.filter(r => r.status === 'planned' && r.priority === 'high').length;
+        const urgentParts = analyzePlannedReplacements(vehicle, replacements).urgentCount;
         score -= urgentParts * 5;
 
         return Math.max(0, Math.min(100, score));
@@ -112,7 +113,8 @@ class VehicleDashboard extends HTMLElement {
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
         const replacements = store.replacementItems.filter(r => r.vehicleId === vehicle.id);
-        const planned = replacements.filter(r => r.status === 'planned');
+        const replacementAnalysis = analyzePlannedReplacements(vehicle, replacements);
+        const planned = replacementAnalysis.planned;
         const recentLogs = logs.slice(0, 3);
         const upcomingParts = planned.slice(0, 3);
 
