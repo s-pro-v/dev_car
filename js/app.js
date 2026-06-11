@@ -14,7 +14,10 @@ import { initTheme } from './lib/theme.js';
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     initNavigation();
-    initTutorial({ navigateToTab });
+    initTutorial({
+        navigateToTab,
+        autoStart: !window.matchMedia('(max-width: 767px)').matches,
+    });
     initClock();
 
     store.subscribe((state) => {

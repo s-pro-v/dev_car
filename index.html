@@ -3,12 +3,13 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="description"
         content="DriveCare — ewidencja serwisowa pojazdu, przypomnienia SKP/OC, planowanie wymian i pulpit stanu technicznego.">
     <meta name="theme-color" content="#1c1c1c">
     <title>DriveCare — Ewidencja pojazdów</title>
     <link rel="stylesheet" href="./style.css">
+    <link rel="stylesheet" href="./mobile.css" media="screen and (max-width: 767px)">
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 
@@ -76,6 +77,10 @@
                     </div>
 
                     <div class="mobile-menu-actions">
+                        <button id="open-help-btn-mobile" class="btn-icon" type="button" aria-label="Uruchom samouczek"
+                            title="Samouczek">
+                            <i data-lucide="graduation-cap"></i>
+                        </button>
                         <button id="mobile-theme-toggle" class="btn-theme-toggle" type="button"
                             aria-label="Zmień motyw">
                             <i data-lucide="sun"></i>
@@ -166,22 +171,22 @@
     </footer>
 
     <nav class="mobile-dock" data-tutorial="mobile-nav" aria-label="Nawigacja mobilna">
-        <button class="dock-btn active" data-tab="logs" type="button">
+        <button class="dock-btn active" data-tab="logs" type="button" aria-label="Ewidencja serwisowa">
             <i data-lucide="wrench"></i>
-            <span>Ewidencja</span>
+            <span class="dock-btn__label">Serwis</span>
         </button>
-        <button class="dock-btn" data-tab="wymiany" type="button">
+        <button class="dock-btn" data-tab="wymiany" type="button" aria-label="Co do wymiany">
             <i data-lucide="layers"></i>
-            <span>Do wymiany</span>
+            <span class="dock-btn__label">Wymiany</span>
             <span id="dock-pending-replacements-badge" class="badge-count badge-count--hidden">0</span>
         </button>
-        <button class="dock-btn" data-tab="koszty" type="button">
+        <button class="dock-btn" data-tab="koszty" type="button" aria-label="Analiza kosztów">
             <i data-lucide="coins"></i>
-            <span>Koszty</span>
+            <span class="dock-btn__label">Koszty</span>
         </button>
-        <button class="dock-btn" data-tab="pulpit" type="button">
+        <button class="dock-btn" data-tab="pulpit" type="button" aria-label="Pulpit pojazdu">
             <i data-lucide="layout-dashboard"></i>
-            <span>Pulpit</span>
+            <span class="dock-btn__label">Pulpit</span>
         </button>
     </nav>
 

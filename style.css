@@ -21,12 +21,17 @@
   --main-header-height: 4rem;
   --site-header-height: calc(var(--status-bar-height) + var(--main-header-height));
   --mobile-dock-height: 4.25rem;
+  --footer-height: 2.5rem;
+  --viewport-height: 100vh;
+  --app-chrome-top: var(--site-header-height);
+  --app-chrome-bottom: var(--footer-height);
+  --content-area-min-height: calc(var(--viewport-height) - var(--app-chrome-top) - var(--app-chrome-bottom));
   --alert-tab-width: 8.75rem;
   --alert-drawer-width: 35rem;
-  --footer-inner-padding-bottom: 4.5rem;
+  --footer-inner-padding-bottom: 0.5rem;
   --form-control-height: 2.5rem;
 
-  --content-max-width: 90rem;
+  --content-max-width: 110rem;
   --content-padding-x: 1rem;
   --content-padding-x-sm: 1.5rem;
   --content-padding-x-lg: 2rem;
@@ -60,7 +65,15 @@
   --transition-hover: 0.2s ease;
   --hover-lighten: #fff;
   --hover-accent-border: color-mix(in srgb, var(--primary) 16%, var(--border));
-  --hover-primary: color-mix(in srgb, var(--primary) 94%, white);
+  --hover-primary-border: color-mix(in srgb, var(--primary-foreground) 25%, transparent);
+
+  --text-color: #222
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --viewport-height: 100dvh;
+  }
 }
 
 :root,
@@ -128,6 +141,10 @@
   --hover-secondary-surface: color-mix(in srgb, var(--secondary) 96%, var(--hover-lighten));
   --hover-input-surface: color-mix(in srgb, var(--input) 97%, var(--hover-lighten));
   --hover-muted-surface: color-mix(in srgb, var(--background) 95%, var(--hover-lighten));
+  --hover-primary: color-mix(in srgb, var(--primary) 92%, white);
+  --hover-success: color-mix(in srgb, var(--success) 92%, white);
+
+  --text-color: #fff;
 }
 
 .light-theme {
@@ -194,6 +211,10 @@
   --hover-secondary-surface: color-mix(in srgb, var(--secondary) 22%, var(--card));
   --hover-input-surface: color-mix(in srgb, var(--secondary) 10%, var(--input));
   --hover-muted-surface: color-mix(in srgb, var(--secondary) 12%, var(--muted));
+  --hover-primary: color-mix(in srgb, var(--primary) 90%, black);
+  --hover-success: color-mix(in srgb, var(--success) 90%, black);
+
+  --text-color: #222;
 }
 
 /* Custom Scrollbars */
@@ -225,7 +246,7 @@
 html {
   margin: 0;
   padding: 0;
-  min-height: 100%;
+  min-height: var(--viewport-height);
   background-color: var(--background);
   background-image: var(--body-bg);
   background-size: var(--body-bg-size);
@@ -236,13 +257,16 @@ html {
 
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: var(--viewport-height);
   color: var(--foreground);
   font-family: var(--font-mono);
   font-weight: var(--font-weight-normal);
   line-height: var(--line-height-body);
   letter-spacing: var(--letter-spacing-ui);
-  padding-top: var(--site-header-height);
+  padding-top: var(--app-chrome-top);
+  padding-bottom: var(--app-chrome-bottom);
+  display: flex;
+  flex-direction: column;
 }
 
 /* Tekst pomocniczy — identyczna typografia w obu motywach (tylko kolory z tokenów) */
@@ -336,8 +360,8 @@ svg.lucide {
 .btn-complete svg,
 .section-title svg,
 .guide-card .btn-secondary svg {
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1rem;
+  height: 1rem;
   transition: stroke var(--transition-hover), fill var(--transition-hover);
 }
 
@@ -346,7 +370,6 @@ svg.lucide {
   .nav-tab-btn:hover svg,
   .mobile-nav-tab-btn:hover svg,
   .dock-btn:hover svg,
-  .btn-primary:hover svg,
   .btn-secondary:hover svg,
   .btn-danger:hover svg,
   .btn-icon:hover svg,
@@ -358,6 +381,11 @@ svg.lucide {
     stroke: var(--hover-primary, var(--primary));
     fill: none;
     transition: stroke var(--transition-hover), fill var(--transition-hover);
+  }
+
+  .btn-primary:hover svg {
+    stroke: currentColor;
+    fill: none;
   }
 }
 
@@ -667,7 +695,7 @@ svg.lucide {
 }
 
 .date-picker__day--selected:hover {
-  background-color: color-mix(in srgb, var(--primary) 92%, white);
+  background-color: var(--hover-primary);
   border-color: var(--primary);
   color: var(--primary-foreground);
 }
@@ -742,7 +770,7 @@ svg.lucide {
 }
 
 .btn-primary--success:hover:not(:disabled) {
-  background-color: color-mix(in srgb, var(--success) 88%, white);
+  background-color: var(--hover-success);
 }
 
 html.modal-open,
@@ -1028,7 +1056,7 @@ html {
   left: 0;
   right: 0;
   height: var(--main-header-height);
-  z-index: calc(var(--z-dock) - 1);
+  z-index: var(--z-header);
   box-sizing: border-box;
   transition: all 0.15s ease-in-out;
   box-shadow: var(--shadow-md);
@@ -1081,7 +1109,7 @@ html {
 
 .logo:hover .logo-icon-wrapper {
   background-color: var(--hover-primary);
-  border-bottom-color: color-mix(in srgb, var(--primary-foreground) 25%, transparent);
+  border-color: var(--hover-primary-border);
 }
 
 .logo-text-primary {
@@ -1243,7 +1271,8 @@ html {
 
 /* Grids and General Layout */
 .main-content {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: var(--content-area-min-height);
   max-width: var(--content-max-width);
   width: 100%;
   margin: 0 auto;
@@ -1252,7 +1281,6 @@ html {
   flex-direction: column;
   gap: 0.5rem;
   box-sizing: border-box;
-  margin-bottom: 2rem;
 }
 
 @media (min-width: 640px) {
@@ -1337,6 +1365,7 @@ html {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  flex: 1 1 auto;
   min-height: 0;
 }
 
@@ -1426,7 +1455,7 @@ html {
 .card {
   background-color: var(--card);
   border: 1px solid var(--border);
-  padding: 1.25rem;
+  padding: 0.25rem;
   border-radius: var(--radius);
   position: relative;
   overflow: hidden;
@@ -1526,7 +1555,7 @@ html {
   letter-spacing: 0.1em;
   padding: 0.45rem 1rem;
   box-shadow: var(--shadow-md);
-  border: 1px solid transparent;
+  border: 1px solid color-mix(in srgb, var(--primary-foreground) 15%, transparent);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1535,13 +1564,14 @@ html {
   font-size: 11px;
   transition:
     background-color var(--transition-hover),
-    border-color var(--transition-hover),
-    color var(--transition-hover);
+    border-color var(--transition-hover);
   text-decoration: none;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: var(--hover-accent-surface);
+  background-color: var(--background);
+  border-color: var(--hover-primary-border);
+  color: var(--text-color);
 }
 
 .btn-primary:disabled {
@@ -1697,13 +1727,13 @@ html {
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
+  gap: 0rem;
   min-width: 0;
 }
 
 .form-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 7px;
   color: var(--muted-foreground);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1810,7 +1840,7 @@ html {
 
 .form-grid {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.2rem;
   width: 100%;
 }
 
@@ -1858,10 +1888,10 @@ html {
 
 .form-check {
   display: flex;
-  align-items: flex-start;
-  gap: 0.625rem;
-  font-size: 12px;
-  line-height: 1.45;
+  align-items: center;
+  gap: 0.125rem;
+  font-size: 8px;
+  line-height: 2.25;
   color: var(--foreground);
   cursor: pointer;
 }
@@ -1873,7 +1903,7 @@ html {
 }
 
 .form-check--boxed {
-  padding: 0.75rem;
+  padding: 0.15rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background-color: color-mix(in srgb, var(--secondary) 16%, transparent);
@@ -1881,7 +1911,7 @@ html {
 
 .form-hint {
   margin: 0;
-  font-size: 11px;
+  font-size: 9px;
   line-height: 1.5;
   color: var(--muted-foreground);
 }
@@ -1889,16 +1919,16 @@ html {
 .form-notice {
   display: flex;
   align-items: flex-start;
-  gap: 0.75rem;
-  padding: 0.875rem 1rem;
+  gap: 0.5rem;
+  padding: 0.5rem;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   box-sizing: border-box;
 }
 
 .form-notice i[data-lucide] {
-  width: 1.125rem;
-  height: 1.125rem;
+  width: 1rem;
+  height: 1rem;
   flex-shrink: 0;
   margin-top: 0.125rem;
 }
@@ -1921,8 +1951,8 @@ html {
 
 .form-notice__text {
   margin: 0;
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: 8px;
+  line-height: 1.25;
   color: var(--muted-foreground);
 }
 
@@ -2092,8 +2122,8 @@ html {
 }
 
 .modal-title {
-  font-size: 0.875rem;
-  font-family: "Inter", sans-serif;
+  font-size: 11px;
+  font-family: var(--font-mono);
   font-weight: 700;
   color: var(--foreground);
   letter-spacing: 0.025em;
@@ -2120,11 +2150,11 @@ html {
 }
 
 .modal-body {
-  padding: 1.25rem;
+  padding: 0.5rem;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
-  font-size: 12px;
+  font-size: 8px;
   box-sizing: border-box;
 }
 
@@ -2258,7 +2288,7 @@ vehicle-selector,
   align-items: center;
   gap: 0.125rem;
   flex-shrink: 0;
-  padding: 0.19rem;
+  padding: 0.06rem;
   border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
   background-color: color-mix(in srgb, var(--secondary) 25%, transparent);
 }
@@ -2333,7 +2363,7 @@ vehicle-selector,
 
 .spec-tile {
   background-color: color-mix(in srgb, var(--background) 45%, transparent);
-  padding: 0.75rem;
+  padding: 0.5rem;
   border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
   display: flex;
   align-items: flex-start;
@@ -2534,7 +2564,7 @@ vehicle-selector,
 }
 
 .log-table td {
-  padding: 1rem;
+  padding: 0.5rem 1rem;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 
@@ -2647,12 +2677,13 @@ vehicle-selector,
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.375rem;
+  gap: 1.75rem;
+  padding: 0.25rem;
 }
 
 .row-actions-btn {
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 1rem;
+  height: 1rem;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -2905,7 +2936,8 @@ reminder-system {
   background-color: var(--card);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
-  width: 500px;
+  width: 100%;
+  max-width: 100%;
 }
 
 .alert-drawer__inner--critical {
@@ -2919,13 +2951,13 @@ reminder-system {
 .alert-drawer__toolbar {
   display: flex;
   justify-content: flex-end;
-  padding: 0.5rem 0.5rem 0;
+  padding: 0.5rem;
   flex-shrink: 0;
 }
 
 .alert-status {
-  margin: 0 0.875rem 0.875rem;
-  padding: 0.875rem;
+  margin: 0 0.5rem 0.5rem;
+  padding: 0.5rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background-color: color-mix(in srgb, var(--secondary) 20%, transparent);
@@ -3022,10 +3054,10 @@ reminder-system {
 }
 
 .alert-detail {
-  padding: 0 0.875rem 0.875rem;
+  padding: 0 0.5rem 0.5rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
   overflow-y: auto;
   min-height: 0;
 }
@@ -3137,7 +3169,7 @@ reminder-system {
 }
 
 .alert-detail__highlight {
-  padding: 0.75rem;
+  padding: 0.5rem;
   border-radius: var(--radius-sm);
   border: 1px solid color-mix(in srgb, var(--warning) 22%, var(--border));
   background-color: color-mix(in srgb, var(--warning) 6%, transparent);
@@ -3167,7 +3199,7 @@ reminder-system {
 }
 
 .alert-detail__help {
-  padding: 0.75rem;
+  padding: 0.5rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background-color: color-mix(in srgb, var(--secondary) 18%, transparent);
@@ -3194,8 +3226,8 @@ reminder-system {
 
 .alert-detail__help p {
   margin: 0;
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: 11px;
+  line-height: 1.25;
   color: var(--muted-foreground);
 }
 
@@ -3547,7 +3579,7 @@ body.alert-drawer-open {
   color: var(--muted-foreground);
   line-height: 1.625;
   background-color: color-mix(in srgb, var(--background) 30%, transparent);
-  padding: 0.75rem;
+  padding: 0.5rem;
 
   display: flex;
   flex-direction: column;
@@ -3671,7 +3703,7 @@ parts-board {
 .parts-intro {
   background-color: var(--card);
   border: 1px solid var(--border);
-  padding: 1.25rem;
+  padding: 0.2rem 2.5rem 0.5rem 0.5rem;
   border-radius: var(--radius);
   display: flex;
   flex-direction: column;
@@ -3955,7 +3987,7 @@ parts-board {
   padding: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
   flex: 1 1 0;
   min-height: 0;
   overflow-x: hidden;
@@ -3998,11 +4030,11 @@ parts-board {
 .task-card {
   background-color: var(--background);
   border: 1px solid var(--border);
-  padding: 1rem;
+  padding: 0.5rem 1rem;
   border-radius: var(--radius);
   display: flex;
   align-items: stretch;
-  gap: 1rem;
+  gap: 0.2rem;
   transition: border-color var(--transition-hover), background-color var(--transition-hover);
   box-sizing: border-box;
   min-width: 0;
@@ -4268,7 +4300,7 @@ parts-board {
 .forecast-bar {
   background-color: color-mix(in srgb, var(--primary) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
-  padding: 0.875rem 1rem;
+  padding: 0.1rem 1rem;
   border-radius: 0;
   display: flex;
   align-items: center;
@@ -4528,7 +4560,7 @@ parts-board {
   font-size: 11px;
   color: var(--muted-foreground);
   background-color: color-mix(in srgb, var(--secondary) 15%, transparent);
-  padding: 0.75rem;
+  padding: 0.5rem;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   display: flex;
@@ -4567,9 +4599,9 @@ parts-board {
 
 .result-tiles {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.75rem;
-  padding-top: 1rem;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.25rem;
+  padding-top: 0.5rem;
   border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 
@@ -4581,7 +4613,7 @@ parts-board {
 
 .result-tile {
   background-color: color-mix(in srgb, var(--background) 55%, transparent);
-  padding: 0.75rem;
+  padding: 0.5rem;
 
   border: 1px solid var(--border);
   text-align: center;
@@ -4625,12 +4657,12 @@ parts-board {
 
 .eco-tip {
   background-color: color-mix(in srgb, var(--success) 5%, transparent);
-  padding: 0.875rem;
+  padding: 0.5rem;
   border-radius: var(--radius);
   border: 1px solid color-mix(in srgb, var(--success) 20%, transparent);
   display: flex;
   align-items: flex-start;
-  gap: 0.625rem;
+  gap: 0.5rem;
   box-sizing: border-box;
   color: var(--muted-foreground);
 }
@@ -4643,10 +4675,10 @@ parts-board {
 }
 
 .eco-tip p {
-  font-size: 11px;
+  font-size: 8px;
   color: var(--muted-foreground);
   margin: 0;
-  line-height: 1.625;
+  line-height: 1.225;
 }
 
 /* Vehicle Dashboard component styling */
@@ -4847,7 +4879,7 @@ parts-board {
 }
 
 .dashboard-panel__body {
-  padding: 0.75rem 1rem;
+  padding: 0.25rem 0.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -4870,7 +4902,7 @@ parts-board {
 
 .dashboard-list-item__title {
   display: block;
-  font-size: 12px;
+  font-size: 8px;
   font-weight: 600;
   color: var(--foreground);
   margin-bottom: 0.125rem;
@@ -5004,13 +5036,6 @@ parts-board {
   left: 50%;
   transform: translateX(-50%);
   top: auto;
-}
-
-@media (max-width: 767px) {
-  .tutorial-popover--dock {
-    bottom: calc(var(--mobile-dock-height) + 0.75rem + env(safe-area-inset-bottom));
-    max-height: min(40vh, 22rem);
-  }
 }
 
 .tutorial-popover__header {
@@ -5274,68 +5299,9 @@ parts-board {
   }
 }
 
-/* Mobile Sticky Navigation Bar Dock */
+/* Mobile dock — style w mobile.css (max-width: 767px) */
 .mobile-dock {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background-color: color-mix(in srgb, var(--card) 95%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-top: 1px solid var(--border);
-  display: flex;
-  justify-content: space-around;
-  padding: 0.5rem 0.25rem;
-  z-index: var(--z-dock);
-  box-sizing: border-box;
-  box-shadow: var(--shadow-md);
-}
-
-@media (min-width: 768px) {
-  .mobile-dock {
-    display: none !important;
-  }
-}
-
-.dock-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: var(--muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--radius);
-  transition: all 0.15s ease-in-out;
-  gap: 0.25rem;
-  position: relative;
-}
-
-.dock-btn:hover {
-  color: var(--foreground);
-  background-color: var(--hover-accent-surface);
-}
-
-.light-theme .dock-btn:hover {
-  color: var(--foreground);
-  background-color: var(--hover-accent-surface);
-}
-
-.dock-btn.active {
-  color: var(--primary) !important;
-  font-weight: 700;
-}
-
-.dock-btn i {
-  width: 1.25rem;
-  height: 1.25rem;
+  display: none;
 }
 
 /* Footer layout & components */
@@ -5348,7 +5314,8 @@ parts-board {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 40px;
+  min-height: var(--footer-height);
+  flex-shrink: 0;
 }
 
 .footer-inner {

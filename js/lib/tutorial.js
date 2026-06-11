@@ -291,7 +291,9 @@ export function initTutorial({ navigateToTab, autoStart = true }) {
     if (overlay) overlay.addEventListener('click', () => finish(false));
 
     const openBtn = document.getElementById('open-help-btn');
+    const openBtnMobile = document.getElementById('open-help-btn-mobile');
     if (openBtn) openBtn.addEventListener('click', start);
+    if (openBtnMobile) openBtnMobile.addEventListener('click', start);
 
     window.addEventListener('keydown', (e) => {
         if (!isOpen) return;
